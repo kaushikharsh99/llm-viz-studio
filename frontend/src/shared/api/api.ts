@@ -1,15 +1,15 @@
 import { parseConfig, type ArchSpec } from '../../engine/spec'
-import { renderModel } from '../../engine/render/block'
-import { fetchInventory } from '../../graph/tensors'
-import { buildGraph } from '../../graph/topology'
-import { graphToSvg } from '../../graph/export'
-import type { ArchGraph, TensorInfo } from '../../graph/types'
+import { fetchInventory, type InventoryResult } from '../../graph/tensors'
+import type { TensorInfo } from '../../graph/types'
+import { buildSemanticTree } from '../../engine/semantic/tree'
+import { computeDiagramLayout } from '../../engine/semantic/layout'
+import { renderSemanticDiagram } from '../../engine/semantic/render'
+import type { WorkspaceState, DetailPreset } from '../../engine/semantic/types'
 
 // In-memory cache for fast tab-switching and duplicate requests
 const cache = {
   specs: new Map<string, Promise<ArchSpec>>(),
-  inventories: new Map<string, Promise<{ tensors: TensorInfo[]; available: boolean; note?: string | null }>>(),
-  diagrams: new Map<string, Promise<string>>(),
+  inventories: new Map<string, Promise<InventoryResult>>(),
 }
 
 export async function searchModels(query: string, signal?: AbortSignal): Promise<any[]> {
@@ -42,53 +42,53 @@ export function fetchArchSpec(modelId: string, signal?: AbortSignal): Promise<Ar
   return p
 }
 
-export function fetchDiagramSvg(modelId: string, signal?: AbortSignal): Promise<string> {
-  if (cache.diagrams.has(modelId)) return cache.diagrams.get(modelId)!
-  const p = (async () => {
-    const spec = await fetchArchSpec(modelId, signal)
-    return renderModel(spec)
-  })()
-  cache.diagrams.set(modelId, p)
+export function fetchModelInventory(modelId: string, signal?: AbortSignal): Promise<InventoryResult> {
+  if (cache.inventories.has(modelId)) return cache.inventories.get(modelId)!
+  const p = fetchInventory(modelId, signal)
+  cache.inventories.set(modelId, p)
   return p
 }
 
-export async function fetchGraph(
+/**
+ * Generate standalone vector SVG for any preset (1, 2, 3) or custom workspace arrangement
+ */
+export async function generateDiagramSvg(
   modelId: string,
-  layer?: number | null,
+  mode: 'preset1' | 'preset2' | 'preset3' | 'workspace',
+  workspaceState?: Partial<WorkspaceState>,
   signal?: AbortSignal
-): Promise<ArchGraph> {
-  const spec = await fetchArchSpec(modelId, signal)
-  if (!cache.inventories.has(modelId)) {
-    cache.inventories.set(modelId, fetchInventory(modelId, signal))
-  }
-  const inv = await cache.inventories.get(modelId)!
-  return buildGraph(modelId, spec, inv.tensors, inv.available, inv.note, layer)
-}
+): Promise<string> {
+  const [spec, inv] = await Promise.all([
+    fetchArchSpec(modelId, signal),
+    fetchModelInventory(modelId, signal).catch(() => ({ tensors: [], available: false, coverage: undefined as any })),
+  ])
 
-export async function fetchTensors(
-  modelId: string,
-  layer?: number | null,
-  limit = 200,
-  signal?: AbortSignal
-): Promise<{ tensors: TensorInfo[]; total_tensors?: number; available: boolean }> {
-  if (!cache.inventories.has(modelId)) {
-    cache.inventories.set(modelId, fetchInventory(modelId, signal))
-  }
-  const inv = await cache.inventories.get(modelId)!
-  let filtered = inv.tensors
-  if (layer !== undefined && layer !== null) {
-    filtered = filtered.filter(t => t.layer === layer)
-  }
-  return {
-    tensors: filtered.slice(0, limit),
-    total_tensors: filtered.length,
-    available: inv.available,
-  }
-}
+  const tree = buildSemanticTree(spec, inv.tensors, workspaceState?.selectedLayer || 0)
 
-export async function fetchGraphSvg(modelId: string, layer?: number | null): Promise<string> {
-  const g = await fetchGraph(modelId, layer)
-  return graphToSvg(g)
+  let state: WorkspaceState
+  if (mode === 'workspace' && workspaceState) {
+    state = {
+      preset: workspaceState.preset || 1,
+      expandedIds: workspaceState.expandedIds || new Set(),
+      collapsedIds: workspaceState.collapsedIds || new Set(),
+      selectedLayer: workspaceState.selectedLayer || 0,
+      selectedNodeId: null,
+      focusedNodeId: workspaceState.focusedNodeId || null,
+    }
+  } else {
+    const p: DetailPreset = mode === 'preset3' ? 3 : mode === 'preset2' ? 2 : 1
+    state = {
+      preset: p,
+      expandedIds: new Set(),
+      collapsedIds: new Set(),
+      selectedLayer: workspaceState?.selectedLayer || 0,
+      selectedNodeId: null,
+      focusedNodeId: null,
+    }
+  }
+
+  const layout = computeDiagramLayout(tree, spec, state)
+  return renderSemanticDiagram(layout, spec, state, { interactive: false })
 }
 
 // Client-side SVG -> PNG conversion using HTML5 Canvas
@@ -138,41 +138,64 @@ export function triggerDownload(content: Blob | string, filename: string): void 
   }
 }
 
+/**
+ * Advanced export with 4 export modes:
+ * - preset1 (Overview)
+ * - preset2 (Module Detail)
+ * - preset3 (Deep Detail)
+ * - workspace (Current Arrangement)
+ */
+export async function downloadArchitectureDiagram(
+  modelId: string,
+  mode: 'preset1' | 'preset2' | 'preset3' | 'workspace',
+  format: 'svg' | 'png',
+  workspaceState?: Partial<WorkspaceState>,
+  scale = 2
+): Promise<void> {
+  const svg = await generateDiagramSvg(modelId, mode, workspaceState)
+  const safeName = modelId.replace('/', '_')
+  const filename = `${safeName}-${mode}.${format}`
+
+  if (format === 'svg') {
+    triggerDownload(svg, filename)
+  } else {
+    const blob = await svgToPngBlob(svg, scale)
+    triggerDownload(blob, filename)
+  }
+}
+
+// Backward-compatible wrapper for existing downloads
 export async function downloadDiagram(modelId: string, format: 'svg' | 'png', scale = 2): Promise<void> {
-  const svg = await fetchDiagramSvg(modelId)
-  const safeName = modelId.replace('/', '_')
-  if (format === 'svg') {
-    triggerDownload(svg, `${safeName}-architecture.svg`)
-  } else {
-    const blob = await svgToPngBlob(svg, scale)
-    triggerDownload(blob, `${safeName}-architecture.png`)
+  return downloadArchitectureDiagram(modelId, 'preset1', format, undefined, scale)
+}
+
+export function fetchDiagramSvg(modelId: string, signal?: AbortSignal): Promise<string> {
+  return generateDiagramSvg(modelId, 'preset1', undefined, signal)
+}
+
+// Backward-compatibility wrappers
+export async function fetchGraph(
+  modelId: string,
+  layer?: number | null,
+  level = 0,
+  signal?: AbortSignal
+): Promise<any> {
+  const spec = await fetchArchSpec(modelId, signal)
+  return {
+    model_id: modelId,
+    architecture: spec.architecture,
+    level,
+    active_layer: layer,
+    nodes: [],
+    edges: [],
   }
 }
 
-export async function downloadGraphExport(modelId: string, format: 'svg' | 'png', scale = 2): Promise<void> {
-  const svg = await fetchGraphSvg(modelId)
-  const safeName = modelId.replace('/', '_')
-  if (format === 'svg') {
-    triggerDownload(svg, `${safeName}-graph.svg`)
-  } else {
-    const blob = await svgToPngBlob(svg, scale)
-    triggerDownload(blob, `${safeName}-graph.png`)
-  }
+export async function downloadGraphExport(
+  modelId: string,
+  format: 'svg' | 'png',
+  level = 0,
+  layer?: number | null
+): Promise<void> {
+  return downloadArchitectureDiagram(modelId, 'preset1', format)
 }
-
-// Backward-compatibility wrappers for legacy code
-export const fetchJSON = async (url: string, signal?: AbortSignal) => {
-  if (url.includes('/api/v1/models/search')) {
-    const q = new URL(url, 'http://localhost').searchParams.get('q') || ''
-    return searchModels(q, signal)
-  }
-  const res = await fetch(url, { signal })
-  return res.json()
-}
-export const fetchText = async (url: string, signal?: AbortSignal) => {
-  const res = await fetch(url, { signal })
-  return res.text()
-}
-export const modelQuery = (model: string) => `model=${encodeURIComponent(model)}`
-export const downloadURL = (model: string, format: 'svg' | 'png', scale = 2) => '#'
-export const graphDownloadURL = (model: string, format: 'svg' | 'png', scale = 2) => '#'

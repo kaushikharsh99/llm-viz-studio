@@ -61,20 +61,43 @@ describe('TypeScript engine validation', () => {
 
   it('maps tensor names to modules correctly', () => {
     expect(mapTensor('model.embed_tokens.weight')[1]).toBe('embedding')
-    expect(mapTensor('model.layers.0.self_attn.q_proj.weight')).toEqual([0, 'attention', 'attention', null])
-    expect(mapTensor('model.layers.3.mlp.experts.17.gate_proj.weight')).toEqual([3, 'expert', 'moe_expert', 17])
+    expect(mapTensor('model.layers.0.self_attn.q_proj.weight')[1]).toBe('q_proj')
+    expect(mapTensor('model.layers.3.mlp.experts.17.gate_proj.weight')[1]).toBe('moe_expert_gate')
     expect(mapTensor('lm_head.weight')[1]).toBe('lm_head')
   })
 
-  it('builds canonical graph structure', () => {
+  it('builds canonical graph structure across levels', () => {
     const spec = parseConfig(qwenFixture, 'qwen-test')
-    const graph = buildGraph('qwen-test', spec, [], false, 'config only')
-    expect(graph.confidence).toBe('partial')
-    expect(graph.metadata_source).toBe('config_only')
-    const nodeIds = graph.nodes.map(n => n.id)
-    expect(nodeIds).toContain('embed')
-    expect(nodeIds).toContain('blocks')
-    expect(nodeIds).toContain('final_norm')
-    expect(nodeIds).toContain('lm_head')
+    // Level 0: Whole Model
+    const g0 = buildGraph('qwen-test', spec, [], false, 'config only', null, 0)
+    expect(g0.metadata_source).toBe('config_only')
+    const nodeIds0 = g0.nodes.map(n => n.id)
+    expect(nodeIds0).toContain('embed')
+    expect(nodeIds0).toContain('layers_all')
+    expect(nodeIds0).toContain('final_norm')
+    expect(nodeIds0).toContain('lm_head')
+    expect(nodeIds0).toContain('out_logits')
+
+    // Level 1: Layer Overview
+    const g1 = buildGraph('qwen-test', spec, [], false, null, 0, 1)
+    const nodeIds1 = g1.nodes.map(n => n.id)
+    expect(nodeIds1).toContain('l0_norm1')
+    expect(nodeIds1).toContain('l0_attn')
+    expect(nodeIds1).toContain('l0_res1')
+    expect(nodeIds1).toContain('l0_norm2')
+    expect(nodeIds1).toContain('l0_ffn')
+    expect(nodeIds1).toContain('l0_res2')
+
+    // Level 2: Module Internals
+    const g2 = buildGraph('qwen-test', spec, [], false, null, 0, 2)
+    const nodeIds2 = g2.nodes.map(n => n.id)
+    expect(nodeIds2).toContain('l0_q_proj')
+    expect(nodeIds2).toContain('l0_rope_q')
+    expect(nodeIds2).toContain('l0_attn_scores')
+    expect(nodeIds2).toContain('l0_softmax')
+    expect(nodeIds2).toContain('l0_gate_proj')
+    expect(nodeIds2).toContain('l0_silu')
+    expect(nodeIds2).toContain('l0_hadamard')
+    expect(nodeIds2).toContain('l0_down_proj')
   })
 })

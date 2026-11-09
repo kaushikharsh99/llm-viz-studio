@@ -1,40 +1,52 @@
-# LLMViz Studio — Explore LLM architectures visually.
+# LLMViz Studio — Interactive Neural Network Architecture Diagrams
 
-Turn Hugging Face `config.json` into publication-ready 2D architecture diagrams. No weights, GPU, API keys, or backend servers required. 100% client-side in the browser, deployable anywhere as a static site (GitHub Pages, Cloudflare Pages, Vercel).
+Transform Hugging Face model configurations and SafeTensors checkpoints into unified, publication-grade interactive architecture diagrams with progressive disclosure. No weight downloads, GPUs, API keys, or backend servers required. 100% client-side in the browser, deployable anywhere as a static site.
 
-## Quick start (Frontend static dev)
+- **Repository**: [https://github.com/kaushikharsh99/llm-viz-studio](https://github.com/kaushikharsh99/llm-viz-studio)
+- **Live Deployment**: [https://llm-viz-studio.vercel.app/](https://llm-viz-studio.vercel.app/)
+
+## Key Capabilities
+
+- **Unified Interactive Diagram Engine**: Beautiful publication-quality architecture diagrams (Raschka family style) with progressive disclosure.
+- **Detail Slider (1 — 2 — 3)**:
+  - **Preset 1 (Overview)**: Faithful, publication-grade high-level diagram (Embeddings, Repeated blocks, Attention block, FFN / MoE block, Norms, Residuals, Output Head).
+  - **Preset 2 (Module Detail)**: Expands inline primary internal structure (Q/K/V/O projections, RoPE, Gate/Up/Activation/Down paths, MoE router and experts).
+  - **Preset 3 (Deep Detail)**: Detailed mathematical operations (MatMul, Causal Mask, Softmax, Hadamard product $\otimes$) with exact verified SafeTensors shapes and dtypes.
+- **Manual Section Expansion**: Click any section directly inside the diagram to expand or collapse it on demand. Dynamic layout reflow ensures zero overlapping components and perfectly routed residual bypass rails.
+- **Focus Mode**: Study individual mechanisms (such as Multi-Head Attention, DeepSeek MLA, or MoE Routers) in isolated, publication-quality illustrations with breadcrumb navigation back to the full model.
+- **Advanced 4-Mode Export System**:
+  - Export Preset 1 (Overview SVG / PNG)
+  - Export Preset 2 (Module Detail SVG / PNG)
+  - Export Preset 3 (Deep Detail SVG / PNG)
+  - Export Current Workspace (custom layout with your exact expansion arrangement)
+- **Model-Specific Architecture Adapters**: Verified support for Llama / SmolLM2, Qwen 2 / 2.5, Qwen 3, and DeepSeek MLA & MoE.
+- **100% Client-Side & Serverless**: Safe bounded HTTP Range requests directly to Hugging Face, running entirely in your browser with zero backend latency.
+
+## Quick Start (Development)
+
 ```bash
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```
-Open http://localhost:5173
 
-## Build static production site
-```bash
-npm --prefix frontend run build
-```
-The static site is generated into `frontend/dist/`. You can deploy this folder directly to GitHub Pages, Cloudflare Pages, Netlify, or any static hosting service.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## Full-stack / Backend dev (Optional)
-The Python FastAPI backend is also included for server-side environments:
+## Production Build
+
 ```bash
-./start.sh
-# or with docker:
-docker compose up --build
+npm run build
 ```
 
-## Features
-- **Client-Side Architecture Engine**: Directly parses Hugging Face `config.json` and safetensors metadata in the browser using open CORS.
-- **2D Publication-Ready Diagrams**: Raschka-style colorful architecture diagrams with family accents, attention layers, MoE routing, and parameter breakdowns.
-- **Interactive Component Graph**: Explore model layers, subgraphs, and weights with `@xyflow/react`.
-- **Client-Side SVG & PNG Export**: Instant high-resolution vector and raster image downloads without backend dependencies.
+Generates the static build into `frontend/dist/`.
 
-## Tests
+## Running Tests
+
 ```bash
-npm --prefix frontend test
-npm --prefix frontend run build
-python -m pytest backend/tests -q
+npm test
 ```
 
-## License / attribution
-Apache-2.0 (see `LICENSE`). The diagram engine is based on the Apache-2.0 `llmviz` project by Hesham Haroon (https://github.com/h9-tec/llmviz), modified and renamed for LLMViz Studio; see `NOTICE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSE.llmviz.txt`. Not affiliated with or endorsed by upstream.
+Runs comprehensive unit and validation suites (Vitest + Pytest) across all model families, detail presets, expansion states, and export modes.
+
+## License
+
+Open source under the [Apache-2.0 License](LICENSE).
