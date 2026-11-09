@@ -1,5 +1,9 @@
 # Vendored & modified from llmviz (Apache-2.0, h9-tec/llmviz); see THIRD_PARTY_NOTICES.md. Renamed to LLMViz Studio engine.
-"""Monochrome architecture-diagram tokens for the frosted-paper interface."""
+"""Raschka-style design tokens: fixed grayscale grammar + one accent color per model.
+
+Values pixel-sampled from Sebastian Raschka's LLM Architecture Gallery figures
+(Llama 3 8B, GPT-OSS 20B, DeepSeek V3/R1 671B).
+"""
 
 from __future__ import annotations
 
@@ -11,14 +15,14 @@ INK = "#000000"
 PILL = "#ffffff"
 INSET_GRAY = "#cccccc"  # FeedForward module inset fill
 
-# Keep the legacy keys so family mapping stays stable; accent details are now neutral.
+# curated accents, sampled + extended in the same register
 ACCENTS = {
-    "blue": "#171717",
-    "coral": "#171717",
-    "green": "#171717",
-    "violet": "#171717",
-    "amber": "#171717",
-    "teal": "#171717",
+    "blue": "#4d76ea",
+    "coral": "#ff664f",
+    "green": "#1e9e63",
+    "violet": "#8b5cf6",
+    "amber": "#e8961e",
+    "teal": "#0f9b9b",
 }
 _ACCENT_ORDER = list(ACCENTS.values())
 
@@ -43,8 +47,10 @@ def accent_for(model_type: str) -> str:
 
 
 def block_tint(accent: str) -> str:
-    """Use a pale neutral fill for repeated blocks across model families."""
-    return "#f5f5f5"
+    """The repeated-block container fill: accent nudged ~33% toward white (sampled ratio)."""
+    a = accent.lstrip("#")
+    ch = [round(int(a[i : i + 2], 16) * 0.67 + 255 * 0.33) for i in (0, 2, 4)]
+    return "#" + "".join(f"{c:02x}" for c in ch)
 
 
 # Arial resolves to Liberation Sans on Linux (metric-compatible), real Arial/Helvetica
