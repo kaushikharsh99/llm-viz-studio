@@ -4,8 +4,8 @@ import { ReactFlow, Background, Controls, type Node, type Edge } from '@xyflow/r
 import '@xyflow/react/dist/style.css'
 
 const KIND_STYLE: Record<string, string> = {
-  embedding: '#dbeafe', norm: '#fef3c7', attention: '#ede9fe', mlp: '#dcfce7',
-  moe: '#fee2e2', block: '#f3f4f6', head: '#ffedd5', op: '#ffffff', unknown: '#fecaca',
+  embedding: '#ffffff', norm: '#fafafa', attention: '#f0f0f0', mlp: '#e8e8e8',
+  moe: '#e2e2e2', block: '#fafafa', head: '#f5f5f5', op: '#ffffff', unknown: '#fafafa',
 }
 
 export default function GraphView({ model }: { model: string }) {
@@ -42,7 +42,7 @@ export default function GraphView({ model }: { model: string }) {
       id: n.id,
       position: { x: (n.level - 1) * 340, y: i * 90 },
       data: { label: `${collapsed.has(n.id) ? '▸' : '▾'} ${n.label}\n${n.kind} · ${Number(n.params || 0).toLocaleString()} · ${n.confidence}` },
-      style: { background: KIND_STYLE[n.kind] || '#fff', border: n.confidence === 'unknown' ? '2px dashed #c00' : '1px solid #999', borderRadius: 8, fontSize: 12, width: 280 },
+      style: { background: KIND_STYLE[n.kind] || '#fff', border: n.confidence === 'unknown' ? '2px dashed #737373' : '1px solid #d4d4d4', borderRadius: 18, color: '#0a0a0a', fontSize: 12, width: 280, boxShadow: '0 1px 2px rgba(0,0,0,.05)' },
     }))
     const es: Edge[] = (graph.edges || []).map((e: any, i: number) => ({
       id: `e${i}`, source: e.src, target: e.dst, animated: e.kind === 'residual', label: e.kind === 'residual' ? 'residual' : '',

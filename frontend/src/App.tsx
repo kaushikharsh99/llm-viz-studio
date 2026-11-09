@@ -14,8 +14,8 @@ export default function App(){
  const params=new URLSearchParams(location.search)
  const model=params.get('model')
  const [dark,setDark]=useDark()
- return <div className={dark?'dark':''}>
-  <header className="nav"><a href="/" className="brand">◈ LLMViz Studio</a><nav><a href="/">Explore</a><a href="https://github.com/kaushikharsh99/llm-viz-studio" target="_blank" rel="noreferrer">GitHub</a><button aria-label="Theme toggle" onClick={()=>setDark(!dark)}>{dark?'☀':'☾'}</button></nav></header>
+ return <div className={`app-shell${dark?' dark':''}`}>
+  <header className="nav"><a href="/" className="brand"><span className="brand-mark" aria-hidden="true">◈</span> LLMViz Studio</a><nav className="nav-links"><a href="/">Explore</a><a href="https://github.com/kaushikharsh99/llm-viz-studio" target="_blank" rel="noreferrer">GitHub</a><button className="theme-toggle" aria-label="Theme toggle" onClick={()=>setDark(!dark)}>{dark?'☀':'☾'}</button></nav></header>
   {model? <Viewer model={model}/> : <Home/>}
   <footer>LLMViz Studio — Explore LLM architectures visually. Open source under Apache-2.0.</footer>
  </div>
@@ -25,8 +25,8 @@ function Home(){
  const go=(id:string)=>{location.href=`/visualize?model=${encodeURIComponent(id)}`}
  useEffect(()=>{ if(!q||q.includes('/')){setSug([]);return} const c=new AbortController(); setLoading(true); const t=setTimeout(()=>{fetchJSON(`/api/v1/models/search?q=${encodeURIComponent(q)}`,c.signal).then(setSug).catch(()=>{}).finally(()=>setLoading(false))},300); return ()=>{clearTimeout(t);c.abort()}},[q])
  const submit=(e:any)=>{e.preventDefault(); const id=(idx>=0&&sug[idx])?sug[idx].id:q.trim(); if(!id)return; if(!/^[^/]+\/[^/]+$/.test(id)){setErr('Enter a full model ID like Qwen/Qwen2.5-1.5B-Instruct, or pick a suggestion.');return} go(id)}
- return <main>
-  <section className="hero"><h1>Visualize any LLM architecture.</h1><p>Turn Hugging Face model configurations into detailed, publication-ready 2D diagrams. No downloads, GPUs, or model weights required.</p>
+ return <main className="home-page">
+  <section className="hero"><p className="eyebrow">MODEL ARCHITECTURE · OPEN SOURCE</p><h1>Visualize any LLM architecture.</h1><p className="hero-copy">Turn Hugging Face model configurations into detailed, publication-ready 2D diagrams. No downloads, GPUs, or model weights required.</p>
   <form className="search" onSubmit={submit} role="search">
    <input aria-label="Model search" placeholder="Search models or enter a Hugging Face model ID..." value={q} onChange={e=>{setQ(e.target.value);setIdx(-1);setErr('')}} onKeyDown={e=>{if(e.key==='ArrowDown'){e.preventDefault();setIdx(Math.min(idx+1,sug.length-1))} if(e.key==='ArrowUp'){e.preventDefault();setIdx(Math.max(idx-1,-1))} if(e.key==='Escape'){setSug([])}}} />
    <button type="submit">{loading?'Searching…':'Visualize'}</button>
