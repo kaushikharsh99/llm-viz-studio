@@ -1,5 +1,5 @@
 import type { ArchSpec } from '../spec'
-import type { SemanticNode, WorkspaceState, DiagramLayout, LayoutedNode, DetailPreset, DataflowEdge } from './types'
+import type { SemanticNode, WorkspaceState, DiagramLayout, LayoutedNode, DetailPreset, DataflowEdge, MagnifiedInset } from './types'
 import { fmtCount } from '../render/svg'
 
 const TCX = 470
@@ -62,12 +62,12 @@ function layoutAttentionInternals(
   topY: number,
   preset: DetailPreset,
   expandedIds: Set<string>,
-  allNodes: Map<string, LayoutedNode>
+  allNodes: Map<string, LayoutedNode>,
+  width: number = 700
 ): { height: number; width: number; children: LayoutedNode[]; edges: DataflowEdge[] } {
   const children = attnNode.children || []
   const layoutedChildren: LayoutedNode[] = []
   const edges: DataflowEdge[] = []
-  const width = 500
   const isDeep = preset === 3 || children.some(c => expandedIds.has(c.id))
 
   function addNode(node: SemanticNode, nCx: number, nY: number, nW: number, nH: number): LayoutedNode {
@@ -107,114 +107,114 @@ function layoutAttentionInternals(
     const kvaNode = children.find(c => c.id.includes('_kva'))
     const kvbNode = children.find(c => c.id.includes('_kvb'))
 
-    let curY = topY + 36
+    let curY = topY + 16
     let oLn: LayoutedNode | undefined
     if (oNode) {
-      oLn = addNode(oNode, cx, curY, 440, 42)
-      curY += 42 + 20
+      oLn = addNode(oNode, cx, curY, 630, 46)
+      curY += 46 + 22
     }
     let scoresLn: LayoutedNode | undefined
     if (scoresNode) {
-      scoresLn = addNode(scoresNode, cx, curY, 440, 38)
-      curY += 38 + 20
+      scoresLn = addNode(scoresNode, cx, curY, 630, 42)
+      curY += 42 + 22
     }
     let qbLn: LayoutedNode | undefined, kvbLn: LayoutedNode | undefined
     if (qbNode && kvbNode) {
-      qbLn = addNode(qbNode, cx - 115, curY, 215, 42)
-      kvbLn = addNode(kvbNode, cx + 115, curY, 215, 42)
-      curY += 42 + 20
+      qbLn = addNode(qbNode, cx - 160, curY, 305, 46)
+      kvbLn = addNode(kvbNode, cx + 160, curY, 305, 46)
+      curY += 46 + 22
     }
     let qaLn: LayoutedNode | undefined, kvaLn: LayoutedNode | undefined
     if (qaNode && kvaNode) {
-      qaLn = addNode(qaNode, cx - 115, curY, 215, 42)
-      kvaLn = addNode(kvaNode, cx + 115, curY, 215, 42)
-      curY += 42 + 16
+      qaLn = addNode(qaNode, cx - 160, curY, 305, 46)
+      kvaLn = addNode(kvaNode, cx + 160, curY, 305, 46)
+      curY += 46 + 18
     }
-    const height = curY - topY + 14
+    const height = curY - topY + 16
 
     if (qaLn && qbLn) edges.push({ fromId: qaLn.id, toId: qbLn.id, fromX: qaLn.cx, fromY: qaLn.topY, toX: qbLn.cx, toY: qbLn.bottomY, label: 'Latent Q' })
     if (kvaLn && kvbLn) edges.push({ fromId: kvaLn.id, toId: kvbLn.id, fromX: kvaLn.cx, fromY: kvaLn.topY, toX: kvbLn.cx, toY: kvbLn.bottomY, label: 'Latent KV' })
-    if (qbLn && scoresLn) edges.push({ fromId: qbLn.id, toId: scoresLn.id, fromX: qbLn.cx, fromY: qbLn.topY, toX: scoresLn.cx - 80, toY: scoresLn.bottomY })
-    if (kvbLn && scoresLn) edges.push({ fromId: kvbLn.id, toId: scoresLn.id, fromX: kvbLn.cx, fromY: kvbLn.topY, toX: scoresLn.cx + 80, toY: scoresLn.bottomY })
+    if (qbLn && scoresLn) edges.push({ fromId: qbLn.id, toId: scoresLn.id, fromX: qbLn.cx, fromY: qbLn.topY, toX: scoresLn.cx - 100, toY: scoresLn.bottomY })
+    if (kvbLn && scoresLn) edges.push({ fromId: kvbLn.id, toId: scoresLn.id, fromX: kvbLn.cx, fromY: kvbLn.topY, toX: scoresLn.cx + 100, toY: scoresLn.bottomY })
     if (scoresLn && oLn) edges.push({ fromId: scoresLn.id, toId: oLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: oLn.cx, toY: oLn.bottomY })
 
     return { height, width, children: layoutedChildren, edges }
   }
 
   if (!isDeep) {
-    let curY = topY + 36
+    let curY = topY + 16
     let oLn: LayoutedNode | undefined
     if (oNode) {
-      oLn = addNode(oNode, cx, curY, 440, 44)
-      curY += 44 + 28
+      oLn = addNode(oNode, cx, curY, 630, 48)
+      curY += 48 + 32
     }
     let ropeLn: LayoutedNode | undefined
     if (ropeNode) {
-      ropeLn = addNode(ropeNode, cx - 75, curY, 280, 36)
-      curY += 36 + 28
+      ropeLn = addNode(ropeNode, cx - 105, curY, 415, 42)
+      curY += 42 + 32
     } else if (qkNormNode) {
-      ropeLn = addNode(qkNormNode, cx - 75, curY, 280, 36)
-      curY += 36 + 28
+      ropeLn = addNode(qkNormNode, cx - 105, curY, 415, 42)
+      curY += 42 + 32
     }
 
-    const qLn = qNode ? addNode(qNode, cx - 150, curY, 135, 44) : undefined
-    const kLn = kNode ? addNode(kNode, cx, curY, 135, 44) : undefined
-    const vLn = vNode ? addNode(vNode, cx + 150, curY, 135, 44) : undefined
+    const qLn = qNode ? addNode(qNode, cx - 212, curY, 204, 48) : undefined
+    const kLn = kNode ? addNode(kNode, cx, curY, 204, 48) : undefined
+    const vLn = vNode ? addNode(vNode, cx + 212, curY, 204, 48) : undefined
 
-    const height = (qLn?.bottomY || curY + 44) - topY + 24
+    const height = (qLn?.bottomY || curY + 48) - topY + 18
 
-    if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 60, toY: ropeLn.bottomY, label: 'Q' })
-    if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 60, toY: ropeLn.bottomY, label: 'K' })
-    if (ropeLn && oLn) edges.push({ fromId: ropeLn.id, toId: oLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: oLn.cx - 60, toY: oLn.bottomY, label: 'Scores' })
-    if (vLn && oLn) edges.push({ fromId: vLn.id, toId: oLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: oLn.cx + 100, toY: oLn.bottomY, label: 'V' })
+    if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 80, toY: ropeLn.bottomY, label: 'Q: [B, H, S, d]' })
+    if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 80, toY: ropeLn.bottomY, label: 'K: [B, H_kv, S, d]' })
+    if (ropeLn && oLn) edges.push({ fromId: ropeLn.id, toId: oLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: oLn.cx - 80, toY: oLn.bottomY, label: 'Attn Matrix' })
+    if (vLn && oLn) edges.push({ fromId: vLn.id, toId: oLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: oLn.cx + 120, toY: oLn.bottomY, label: 'V: [B, H_kv, S, d]' })
 
     return { height, width, children: layoutedChildren, edges }
   }
 
-  // Preset 3: Deep Computational Subgraph
-  let curY = topY + 36
+  // Preset 3: Deep Computational Subgraph (Full mathematical breakdown)
+  let curY = topY + 16
   let oLn: LayoutedNode | undefined
   if (oNode) {
-    oLn = addNode(oNode, cx, curY, 440, 42)
-    curY += 42 + 22
+    oLn = addNode(oNode, cx, curY, 630, 46)
+    curY += 46 + 22
   }
   let ctxLn: LayoutedNode | undefined
   if (ctxNode) {
-    ctxLn = addNode(ctxNode, cx, curY, 440, 38)
-    curY += 38 + 20
+    ctxLn = addNode(ctxNode, cx, curY, 540, 40)
+    curY += 40 + 20
   }
   let softmaxLn: LayoutedNode | undefined
   if (softmaxNode) {
-    softmaxLn = addNode(softmaxNode, cx - 75, curY, 290, 36)
-    curY += 36 + 20
+    softmaxLn = addNode(softmaxNode, cx - 105, curY, 415, 40)
+    curY += 40 + 20
   }
   let scoresLn: LayoutedNode | undefined
   if (scoresNode) {
-    scoresLn = addNode(scoresNode, cx - 75, curY, 290, 38)
-    curY += 38 + 20
+    scoresLn = addNode(scoresNode, cx - 105, curY, 415, 40)
+    curY += 40 + 20
   }
   let ropeLn: LayoutedNode | undefined
   if (ropeNode) {
-    ropeLn = addNode(ropeNode, cx - 75, curY, 290, 36)
-    curY += 36 + 24
+    ropeLn = addNode(ropeNode, cx - 105, curY, 415, 40)
+    curY += 40 + 24
   } else if (qkNormNode) {
-    ropeLn = addNode(qkNormNode, cx - 75, curY, 290, 36)
-    curY += 36 + 24
+    ropeLn = addNode(qkNormNode, cx - 105, curY, 415, 40)
+    curY += 40 + 24
   }
 
-  const qLn = qNode ? addNode(qNode, cx - 150, curY, 135, 44) : undefined
-  const kLn = kNode ? addNode(kNode, cx, curY, 135, 44) : undefined
-  const vLn = vNode ? addNode(vNode, cx + 150, curY, 135, 44) : undefined
+  const qLn = qNode ? addNode(qNode, cx - 212, curY, 204, 48) : undefined
+  const kLn = kNode ? addNode(kNode, cx, curY, 204, 48) : undefined
+  const vLn = vNode ? addNode(vNode, cx + 212, curY, 204, 48) : undefined
 
-  const height = (qLn?.bottomY || curY + 44) - topY + 24
+  const height = (qLn?.bottomY || curY + 48) - topY + 18
 
-  if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 60, toY: ropeLn.bottomY, label: 'Q' })
-  if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 60, toY: ropeLn.bottomY, label: 'K' })
-  if (ropeLn && scoresLn) edges.push({ fromId: ropeLn.id, toId: scoresLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Q, K' })
-  if (scoresLn && softmaxLn) edges.push({ fromId: scoresLn.id, toId: softmaxLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Scores' })
-  if (softmaxLn && ctxLn) edges.push({ fromId: softmaxLn.id, toId: ctxLn.id, fromX: softmaxLn.cx, fromY: softmaxLn.topY, toX: ctxLn.cx - 80, toY: ctxLn.bottomY, label: 'Weights' })
-  if (vLn && ctxLn) edges.push({ fromId: vLn.id, toId: ctxLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: ctxLn.cx + 100, toY: ctxLn.bottomY, label: 'Values' })
-  if (ctxLn && oLn) edges.push({ fromId: ctxLn.id, toId: oLn.id, fromX: ctxLn.cx, fromY: ctxLn.topY, toX: oLn.cx, toY: oLn.bottomY, label: 'Context' })
+  if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 80, toY: ropeLn.bottomY, label: 'Q [B, H, S, d]' })
+  if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 80, toY: ropeLn.bottomY, label: 'K [B, H_kv, S, d]' })
+  if (ropeLn && scoresLn) edges.push({ fromId: ropeLn.id, toId: scoresLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Rotary Q, K' })
+  if (scoresLn && softmaxLn) edges.push({ fromId: scoresLn.id, toId: softmaxLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Scores [H, S, S]' })
+  if (softmaxLn && ctxLn) edges.push({ fromId: softmaxLn.id, toId: ctxLn.id, fromX: softmaxLn.cx, fromY: softmaxLn.topY, toX: ctxLn.cx - 100, toY: ctxLn.bottomY, label: 'Weights [H, S, S]' })
+  if (vLn && ctxLn) edges.push({ fromId: vLn.id, toId: ctxLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: ctxLn.cx + 120, toY: ctxLn.bottomY, label: 'Values [B, H_kv, S, d]' })
+  if (ctxLn && oLn) edges.push({ fromId: ctxLn.id, toId: oLn.id, fromX: ctxLn.cx, fromY: ctxLn.topY, toX: oLn.cx, toY: oLn.bottomY, label: 'Context [B, S, D]' })
 
   return { height, width, children: layoutedChildren, edges }
 }
@@ -229,12 +229,12 @@ function layoutFfnInternals(
   topY: number,
   preset: DetailPreset,
   expandedIds: Set<string>,
-  allNodes: Map<string, LayoutedNode>
+  allNodes: Map<string, LayoutedNode>,
+  width: number = 700
 ): { height: number; width: number; children: LayoutedNode[]; edges: DataflowEdge[] } {
   const children = ffnNode.children || []
   const layoutedChildren: LayoutedNode[] = []
   const edges: DataflowEdge[] = []
-  const width = 500
   const isDeep = preset === 3 || children.some(c => expandedIds.has(c.id))
 
   function addNode(node: SemanticNode, nCx: number, nY: number, nW: number, nH: number): LayoutedNode {
@@ -262,23 +262,23 @@ function layoutFfnInternals(
     const expNode = children.find(c => c.kind === 'moe_expert_group')
     const sharedNode = children.find(c => c.kind === 'moe_shared')
 
-    let curY = topY + 36
+    let curY = topY + 16
     let expLn: LayoutedNode | undefined
     if (expNode) {
-      expLn = addNode(expNode, cx, curY, 440, 48)
-      curY += 48 + 22
+      expLn = addNode(expNode, cx, curY, 630, 50)
+      curY += 50 + 24
     }
     let sharedLn: LayoutedNode | undefined
     if (sharedNode) {
-      sharedLn = addNode(sharedNode, cx, curY, 440, 42)
-      curY += 42 + 22
+      sharedLn = addNode(sharedNode, cx, curY, 630, 44)
+      curY += 44 + 24
     }
     let routerLn: LayoutedNode | undefined
     if (routerNode) {
-      routerLn = addNode(routerNode, cx, curY, 440, 42)
-      curY += 42 + 16
+      routerLn = addNode(routerNode, cx, curY, 630, 44)
+      curY += 44 + 18
     }
-    const height = curY - topY + 14
+    const height = curY - topY + 16
 
     if (routerLn && expLn) {
       edges.push({
@@ -303,16 +303,16 @@ function layoutFfnInternals(
   const hadamardNode = children.find(c => c.kind === 'hadamard_op')
 
   if (!isDeep) {
-    let curY = topY + 36
+    let curY = topY + 16
     let downLn: LayoutedNode | undefined
     if (downNode) {
-      downLn = addNode(downNode, cx, curY, 440, 44)
-      curY += 44 + 30
+      downLn = addNode(downNode, cx, curY, 630, 48)
+      curY += 48 + 32
     }
-    const gateLn = gateNode ? addNode(gateNode, cx - 115, curY, 210, 44) : undefined
-    const upLn = upNode ? addNode(upNode, cx + 115, curY, 210, 44) : undefined
+    const gateLn = gateNode ? addNode(gateNode, cx - 160, curY, 305, 48) : undefined
+    const upLn = upNode ? addNode(upNode, cx + 160, curY, 305, 48) : undefined
 
-    const height = (gateLn?.bottomY || curY + 44) - topY + 24
+    const height = (gateLn?.bottomY || curY + 48) - topY + 18
 
     if (gateLn && downLn) {
       edges.push({
@@ -320,9 +320,9 @@ function layoutFfnInternals(
         toId: downLn.id,
         fromX: gateLn.cx,
         fromY: gateLn.topY,
-        toX: downLn.cx - 80,
+        toX: downLn.cx - 100,
         toY: downLn.bottomY,
-        label: 'Gate',
+        label: 'Gate [B, S, I]',
       })
     }
     if (upLn && downLn) {
@@ -331,9 +331,9 @@ function layoutFfnInternals(
         toId: downLn.id,
         fromX: upLn.cx,
         fromY: upLn.topY,
-        toX: downLn.cx + 80,
+        toX: downLn.cx + 100,
         toY: downLn.bottomY,
-        label: 'Up',
+        label: 'Up [B, S, I]',
       })
     }
 
@@ -341,24 +341,24 @@ function layoutFfnInternals(
   }
 
   // Deep SwiGLU FFN
-  let curY = topY + 36
+  let curY = topY + 16
   let downLn: LayoutedNode | undefined
   if (downNode) {
-    downLn = addNode(downNode, cx, curY, 440, 42)
-    curY += 42 + 24
+    downLn = addNode(downNode, cx, curY, 630, 46)
+    curY += 46 + 24
   }
   let hadamardLn: LayoutedNode | undefined
   if (hadamardNode) {
-    hadamardLn = addNode(hadamardNode, cx, curY, 300, 38)
-    curY += 38 + 22
+    hadamardLn = addNode(hadamardNode, cx, curY, 420, 40)
+    curY += 40 + 22
   }
-  const actLn = actNode ? addNode(actNode, cx - 115, curY, 205, 36) : undefined
-  const upLn = upNode ? addNode(upNode, cx + 115, curY, 205, 44) : undefined
+  const actLn = actNode ? addNode(actNode, cx - 160, curY, 305, 40) : undefined
+  const upLn = upNode ? addNode(upNode, cx + 160, curY, 305, 48) : undefined
 
-  curY += 36 + 22
-  const gateLn = gateNode ? addNode(gateNode, cx - 115, curY, 205, 44) : undefined
+  curY += 40 + 22
+  const gateLn = gateNode ? addNode(gateNode, cx - 160, curY, 305, 48) : undefined
 
-  const height = (gateLn?.bottomY || curY + 44) - topY + 24
+  const height = (gateLn?.bottomY || curY + 48) - topY + 18
 
   if (gateLn && actLn) {
     edges.push({
@@ -368,7 +368,7 @@ function layoutFfnInternals(
       fromY: gateLn.topY,
       toX: actLn.cx,
       toY: actLn.bottomY,
-      label: 'Gate(X)',
+      label: 'Gate [B, S, I]',
     })
   }
   if (actLn && hadamardLn) {
@@ -377,7 +377,7 @@ function layoutFfnInternals(
       toId: hadamardLn.id,
       fromX: actLn.cx,
       fromY: actLn.topY,
-      toX: hadamardLn.cx - 60,
+      toX: hadamardLn.cx - 80,
       toY: hadamardLn.bottomY,
       label: 'SiLU(G)',
     })
@@ -388,9 +388,9 @@ function layoutFfnInternals(
       toId: hadamardLn.id,
       fromX: upLn.cx,
       fromY: upLn.topY,
-      toX: hadamardLn.cx + 60,
+      toX: hadamardLn.cx + 80,
       toY: hadamardLn.bottomY,
-      label: 'Up(X)',
+      label: 'Up [B, S, I]',
     })
   }
   if (hadamardLn && downLn) {
@@ -401,7 +401,7 @@ function layoutFfnInternals(
       fromY: hadamardLn.topY,
       toX: downLn.cx,
       toY: downLn.bottomY,
-      label: 'Gate ⊗ Up',
+      label: 'SwiGLU [B, S, I]',
     })
   }
 
@@ -564,20 +564,22 @@ export function computeDiagramLayout(
   y = plus2Y + 36
 
   const internalEdges: DataflowEdge[] = []
+  const magnifiedInsets: MagnifiedInset[] = []
+  const insetX = 840
+  const insetW = 700
+  const insetCx = insetX + insetW / 2 // 1190
 
-  // FFN / MoE Block
+  // Repeated block dimensions (stable tower)
+  const blkW = BLK_W
+  const outerW = OUTER_W
+  const blkX = cx - blkW / 2
+  const outerX = cx - outerW / 2
+  const railX = blkX + blkW - 45
+
+  // FFN / MoE Block in Central Tower (always compact in tower)
   const ffnTop = y
-  let ffnH = 48
-  let ffnW = 210
-  const ffnChildrenLayouted: LayoutedNode[] = []
-
-  if (isFfnExpanded && ffnNode?.children) {
-    const ffnRes = layoutFfnInternals(ffnNode, spec, cx, ffnTop, preset, expandedIds, allNodes)
-    ffnW = ffnRes.width
-    ffnH = ffnRes.height
-    ffnChildrenLayouted.push(...ffnRes.children)
-    internalEdges.push(...ffnRes.edges)
-  }
+  const ffnH = 48
+  const ffnW = 240
 
   const { children: _fch, ...ffnProps } = ffnNode || {
     id: `layer_${L}_ffn`,
@@ -593,7 +595,7 @@ export function computeDiagramLayout(
     width: ffnW,
     height: ffnH,
     isExpanded: isFfnExpanded,
-    children: ffnChildrenLayouted,
+    children: [],
     cx,
     topY: ffnTop,
     bottomY: ffnTop + ffnH,
@@ -602,6 +604,31 @@ export function computeDiagramLayout(
   }
   allNodes.set(layoutedFfn.id, layoutedFfn)
   y = ffnTop + ffnH + 34
+
+  // If FFN is expanded: layout into spacious Magnified Side Inset
+  if (isFfnExpanded && ffnNode?.children) {
+    const ffnInsetTopY = 240
+    const ffnRes = layoutFfnInternals(ffnNode, spec, insetCx, ffnInsetTopY + 36, preset, expandedIds, allNodes, insetW)
+    const insetH = ffnRes.height + 44
+    magnifiedInsets.push({
+      id: 'ffn_magnified_inset',
+      kind: spec.moe ? 'moe' : 'ffn',
+      title: spec.moe
+        ? `▲ Mixture-of-Experts (${preset === 3 ? 'Deep Operations' : 'Expanded'})`
+        : `▲ SwiGLU Feed-Forward Network (${preset === 3 ? 'Deep Operations' : 'Expanded'})`,
+      sourceNodeId: layoutedFfn.id,
+      sourceX: blkX + blkW,
+      sourceTopY: ffnTop,
+      sourceBottomY: ffnTop + ffnH,
+      x: insetX,
+      y: ffnInsetTopY,
+      width: insetW,
+      height: insetH,
+      children: ffnRes.children,
+      edges: ffnRes.edges,
+    })
+    internalEdges.push(...ffnRes.edges)
+  }
 
   // Norm 2
   const norm2H = 48, norm2W = 240
@@ -653,19 +680,10 @@ export function computeDiagramLayout(
   allNodes.set(layoutedRes1.id, layoutedRes1)
   y = plus1Y + 36
 
-  // Attention Block
+  // Attention Block in Central Tower (always compact in tower)
   const attnTop = y
-  let attnH = 96
-  let attnW = 310
-  const attnChildrenLayouted: LayoutedNode[] = []
-
-  if (isAttnExpanded && attnNode?.children) {
-    const attnRes = layoutAttentionInternals(attnNode, spec, cx, attnTop, preset, expandedIds, allNodes)
-    attnW = attnRes.width
-    attnH = attnRes.height
-    attnChildrenLayouted.push(...attnRes.children)
-    internalEdges.push(...attnRes.edges)
-  }
+  const attnH = 96
+  const attnW = 310
 
   const { children: _achTop, ...attnProps } = attnNode || {
     id: `layer_${L}_attention`,
@@ -681,7 +699,7 @@ export function computeDiagramLayout(
     width: attnW,
     height: attnH,
     isExpanded: isAttnExpanded,
-    children: attnChildrenLayouted,
+    children: [],
     cx,
     topY: attnTop,
     bottomY: attnTop + attnH,
@@ -690,6 +708,30 @@ export function computeDiagramLayout(
   }
   allNodes.set(layoutedAttn.id, layoutedAttn)
   y = attnTop + attnH + 34
+
+  // If Attention is expanded: layout into spacious Magnified Side Inset
+  if (isAttnExpanded && attnNode?.children) {
+    const ffnInset = magnifiedInsets.find(i => i.kind === 'ffn' || i.kind === 'moe')
+    const attnInsetTopY = ffnInset ? ffnInset.y + ffnInset.height + 36 : 560
+    const attnRes = layoutAttentionInternals(attnNode, spec, insetCx, attnInsetTopY + 36, preset, expandedIds, allNodes, insetW)
+    const insetH = attnRes.height + 44
+    magnifiedInsets.push({
+      id: 'attn_magnified_inset',
+      kind: 'attention',
+      title: `▲ Self-Attention Mechanism (${preset === 3 ? 'Deep Operations' : 'Expanded'})`,
+      sourceNodeId: layoutedAttn.id,
+      sourceX: blkX + blkW,
+      sourceTopY: attnTop,
+      sourceBottomY: attnTop + attnH,
+      x: insetX,
+      y: attnInsetTopY,
+      width: insetW,
+      height: insetH,
+      children: attnRes.children,
+      edges: attnRes.edges,
+    })
+    internalEdges.push(...attnRes.edges)
+  }
 
   // Norm 1
   const norm1H = 48, norm1W = 240
@@ -772,16 +814,19 @@ export function computeDiagramLayout(
   }
   allNodes.set(layoutedTok.id, layoutedTok)
 
-  const isWide = isAttnExpanded || isFfnExpanded
-  const currentBlkW = isWide ? 620 : 510
-  const currentOuterW = isWide ? 760 : 640
-  const blkX = cx - currentBlkW / 2
-  const outerX = cx - currentOuterW / 2
-  const railX = blkX + currentBlkW - 45
+  const hasMagnified = magnifiedInsets.length > 0
+  const isMoeOverview = spec.moe && !isFfnExpanded
+  const totalWidth = hasMagnified ? 1600 : (isMoeOverview ? 1540 : 1100)
 
-  const totalHeight = tokY + tokH + 140
-  const isMoeWithInset = spec.moe && !isFfnExpanded
-  const totalWidth = isMoeWithInset ? 1540 : (isWide ? 1220 : 1100)
+  let maxInsetBottom = 0
+  for (const mi of magnifiedInsets) {
+    maxInsetBottom = Math.max(maxInsetBottom, mi.y + mi.height)
+  }
+
+  const towerBottom = tokY + tokH + 120
+  const totalHeight = hasMagnified
+    ? Math.max(towerBottom + 160, maxInsetBottom + 80)
+    : towerBottom
 
   // Residual bypass rails
   const residualRails = [
@@ -830,13 +875,25 @@ export function computeDiagramLayout(
   if (spec.positional === 'alibi') {
     headLines.push([['ALiBi positional bias', '']])
   }
-  callouts.push({
-    x: cx + 330,
-    y: embTop + 44,
-    lines: headLines,
-    targetX: cx + 152,
-    targetY: layoutedAttn.bottomY - 8,
-  })
+
+  if (hasMagnified) {
+    // Left-anchored callout so it never collides with side magnified insets
+    callouts.push({
+      x: 18,
+      y: 460,
+      lines: headLines,
+      targetX: blkX,
+      targetY: layoutedAttn.y + 20,
+    })
+  } else {
+    callouts.push({
+      x: cx + 330,
+      y: embTop + 44,
+      lines: headLines,
+      targetX: cx + 152,
+      targetY: layoutedAttn.bottomY - 8,
+    })
+  }
 
   // Context length callout
   if (spec.context_length) {
@@ -872,17 +929,18 @@ export function computeDiagramLayout(
     allNodes,
     residualRails,
     internalEdges,
+    magnifiedInsets,
     callouts,
     outerContainer: {
       x: outerX,
       y: outerTop,
-      w: currentOuterW,
+      w: outerW,
       h: outerH,
     },
     repeatedBlockContainer: {
       x: blkX,
       y: blkTop,
-      w: currentBlkW,
+      w: blkW,
       h: blkH,
       numLayers: spec.num_layers,
     },
@@ -903,8 +961,8 @@ function computeFocusLayout(
   const isFfn = focusNode.kind === 'ffn' || focusNode.kind === 'moe'
 
   if (isAttn) {
-    const res = layoutAttentionInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes)
-    const focusW = 560
+    const res = layoutAttentionInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes, 700)
+    const focusW = 700
     const focusH = res.height
     const { children: _fCh, ...focusProps } = focusNode
     const rootLayouted: LayoutedNode = {
@@ -937,8 +995,8 @@ function computeFocusLayout(
   }
 
   if (isFfn) {
-    const res = layoutFfnInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes)
-    const focusW = 560
+    const res = layoutFfnInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes, 700)
+    const focusW = 700
     const focusH = res.height
     const { children: _fCh, ...focusProps } = focusNode
     const rootLayouted: LayoutedNode = {

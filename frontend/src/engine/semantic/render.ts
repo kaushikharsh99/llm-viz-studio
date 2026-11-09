@@ -99,25 +99,44 @@ export function renderSemanticDiagram(
     renderNode(g, n, spec, state, nodeAttrs, isInteractive, selectedId)
   }
 
-  // Render Internal Computational Dataflow Edges
-  if (layout.internalEdges) {
-    for (const edge of layout.internalEdges) {
-      const isSelected = selectedId === edge.fromId || selectedId === edge.toId
-      const strokeCol = isSelected ? '#000000' : '#475569'
-      const strokeW = isSelected ? 2.5 : 1.6
+  // Render Side Magnified Insets (Breakout detail with projection rays)
+  if (layout.magnifiedInsets && layout.magnifiedInsets.length > 0) {
+    for (const inset of layout.magnifiedInsets) {
+      // 1. Translucent magnifying projection cone from central tower to side breakout box
+      g.raw(
+        `<polygon points="${inset.sourceX},${inset.sourceTopY} ${inset.x},${inset.y} ${inset.x},${inset.y + inset.height} ${inset.sourceX},${inset.sourceBottomY}" fill="rgba(15,23,42,0.035)" stroke="none" />`
+      )
+      // 2. Dotted leader projection rays
+      g.leader(inset.sourceX, inset.sourceTopY, inset.x, inset.y)
+      g.leader(inset.sourceX, inset.sourceBottomY, inset.x, inset.y + inset.height)
 
-      if (Math.abs(edge.fromX - edge.toX) < 6) {
-        g.arrow(edge.fromX, edge.fromY, edge.toX, edge.toY)
-      } else {
-        const midY = (edge.fromY + edge.toY) / 2
-        g.path(`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${midY}, ${edge.toX} ${midY}, ${edge.toX} ${edge.toY + 6}`)
-        g.arrow(edge.toX, edge.toY + 6, edge.toX, edge.toY)
+      // 3. Magnified Inset Container Box
+      g.rect(inset.x, inset.y, inset.width, inset.height, 22, 'inset-accent')
+
+      // 4. Inset Header Banner
+      g.text(inset.x + inset.width / 2, inset.y + 26, inset.title, 16, 'accent', 'middle', 700)
+
+      // 5. Child projection pills inside side inset
+      for (const ch of inset.children) {
+        renderChildPill(g, ch, spec, nodeAttrs)
       }
 
-      if (edge.label) {
-        const midX = (edge.fromX + edge.toX) / 2 + (edge.fromX !== edge.toX ? 8 : 12)
-        const midY = (edge.fromY + edge.toY) / 2
-        g.text(midX, midY, edge.label, 11, 'mono', 'start', 600)
+      // 6. Directed Dataflow Edges inside side inset
+      for (const edge of inset.edges) {
+        const isSelected = selectedId === edge.fromId || selectedId === edge.toId
+        if (Math.abs(edge.fromX - edge.toX) < 8) {
+          g.arrow(edge.fromX, edge.fromY, edge.toX, edge.toY)
+        } else {
+          const midY = (edge.fromY + edge.toY) / 2
+          g.path(`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${midY}, ${edge.toX} ${midY}, ${edge.toX} ${edge.toY + 6}`)
+          g.arrow(edge.toX, edge.toY + 6, edge.toX, edge.toY)
+        }
+
+        if (edge.label) {
+          const midX = (edge.fromX + edge.toX) / 2 + (edge.fromX !== edge.toX ? 8 : 12)
+          const midY = (edge.fromY + edge.toY) / 2
+          g.text(midX, midY, edge.label, 11, 'mono', 'start', 600)
+        }
       }
     }
   }
@@ -212,55 +231,67 @@ function renderNode(
 
   // 1. Attention Block
   if (n.kind === 'attention') {
-    if (n.isExpanded && n.children && n.children.length > 0) {
-      // Expanded Attention Container
+    if (state.focusedNodeId && n.children && n.children.length > 0) {
+      // Focus Mode isolated container
       g.rect(n.x, n.y, n.width, n.height, 20, 'inset-accent')
-      // Container Title Banner
-      g.text(n.cx, n.y + 24, `▲ Self-Attention Mechanism (Expanded)`, 16, 'accent', 'middle', 700)
-
-      // Render internal projection pills
+      g.text(n.cx, n.y + 26, `▲ Self-Attention Mechanism (Expanded)`, 16, 'accent', 'middle', 700)
       for (const ch of n.children) {
         renderChildPill(g, ch, spec, nodeAttrs)
       }
-    } else {
-      // Collapsed Iconic Dark Attention Box
-      g.rect(n.x, n.y, n.width, n.height, 16, 'attnbox')
-      const al = attnLines(spec)
-      for (let i = 0; i < al.length; i++) {
-        g.richText(n.cx, n.y + 40 + i * 30, al[i], 23, 'middle', 400)
+      return
+    }
+
+    // Central Tower Attention Box (always compact in tower)
+    g.rect(n.x, n.y, n.width, n.height, 16, 'attnbox')
+    const al = attnLines(spec)
+    for (let i = 0; i < al.length; i++) {
+      g.richText(n.cx, n.y + 40 + i * 30, al[i], 23, 'middle', 400)
+    }
+
+    if (n.isExpanded) {
+      g.rect(n.rightX - 116, n.y + 12, 102, 22, 5, 'pill')
+      g.text(n.rightX - 65, n.y + 26, 'MAGNIFIED ▶', 10, 'accent', 'middle', 700)
+      if (isInteractive) {
+        g.text(n.rightX - 128, n.y + 28, '−', 20, 'white', 'middle', 700)
       }
-      if (n.is_expandable && isInteractive) {
-        g.text(n.rightX - 20, n.y + 24, '+', 20, 'white', 'middle', 700)
-      }
+    } else if (n.is_expandable && isInteractive) {
+      g.text(n.rightX - 20, n.y + 24, '+', 20, 'white', 'middle', 700)
     }
     return
   }
 
   // 2. FFN / MoE Block
   if (n.kind === 'ffn' || n.kind === 'moe') {
-    if (n.isExpanded && n.children && n.children.length > 0) {
-      // Expanded FFN Container
+    if (state.focusedNodeId && n.children && n.children.length > 0) {
+      // Focus Mode isolated container
       g.rect(n.x, n.y, n.width, n.height, 20, 'inset-accent')
       g.text(
         n.cx,
-        n.y + 24,
+        n.y + 26,
         `▲ ${n.kind === 'moe' ? 'Mixture-of-Experts' : 'SwiGLU Feed-Forward'} (Expanded)`,
         16,
         'accent',
         'middle',
         700
       )
-
       for (const ch of n.children) {
         renderChildPill(g, ch, spec, nodeAttrs)
       }
-    } else {
-      // Collapsed MoE / FFN Pill
-      g.rect(n.x, n.y, n.width, n.height, 14, 'moepill')
-      g.text(n.cx, n.y + 31, spec.moe ? 'MoE' : 'Feed forward', 22, '', 'middle')
-      if (n.is_expandable && isInteractive) {
-        g.text(n.rightX - 16, n.y + 20, '+', 16, 'white', 'middle', 700)
+      return
+    }
+
+    // Central Tower FFN / MoE Pill (always compact in tower)
+    g.rect(n.x, n.y, n.width, n.height, 14, 'moepill')
+    g.text(n.cx, n.y + 31, spec.moe ? 'MoE' : 'Feed forward', 22, '', 'middle')
+
+    if (n.isExpanded) {
+      g.rect(n.rightX - 116, n.y + 13, 102, 22, 5, 'pill')
+      g.text(n.rightX - 65, n.y + 27, 'MAGNIFIED ▶', 10, 'accent', 'middle', 700)
+      if (isInteractive) {
+        g.text(n.rightX - 128, n.y + 28, '−', 18, 'black', 'middle', 700)
       }
+    } else if (n.is_expandable && isInteractive) {
+      g.text(n.rightX - 16, n.y + 20, '+', 16, 'white', 'middle', 700)
     }
     return
   }
@@ -280,7 +311,7 @@ function renderNode(
 }
 
 /**
- * Render child pills inside an expanded module
+ * Render child pills inside an expanded module with spacious layout and zero overlap
  */
 function renderChildPill(
   g: SVG,
@@ -289,26 +320,64 @@ function renderChildPill(
   nodeAttrs: (n: LayoutedNode) => string
 ): void {
   g.raw(`<g ${nodeAttrs(ch)} id="${escapeHtml(ch.id)}">`)
-  const isTensor = ch.kind.includes('proj') || ch.kind.includes('weight')
-  const isMathOp = ch.kind.includes('op') || ch.kind.includes('scores') || ch.kind.includes('softmax')
   const pillClass = 'pill'
 
   g.rect(ch.x, ch.y, ch.width, ch.height, 10, pillClass)
 
-  // Label & Dimension Sublabel
+  const badgeW = ch.badge ? Math.max(48, ch.badge.length * 7 + 10) : 0
+  const badgeH = 18
+  const badgeX = ch.rightX - badgeW - 8
+  const badgeY = ch.y + (ch.height - badgeH) / 2
+
+  // Text bounding coordinates to guarantee zero badge collision
+  const textLeft = ch.leftX + 10
+  const textRight = ch.badge ? badgeX - 8 : ch.rightX - 10
+  const textCenterX = (textLeft + textRight) / 2
+
+  // Shorten "(q_proj)" suffix in narrow 3-column projection pill so "Query Projection" fits with 25px margin!
+  const displayLabel = ch.width < 220
+    ? ch.label.replace(/\s*\([a-z0-9_]+\)$/i, '')
+    : ch.label
   const hasSub = Boolean(ch.sublabel || ch.shape_str)
-  const labelY = hasSub ? ch.y + 18 : ch.y + ch.height / 2 + 5
-  g.text(ch.cx - 24, labelY, ch.label, 13, '', 'middle', 600)
+
   if (hasSub) {
-    const sub = ch.shape_str ? `${ch.shape_str} · ${ch.sublabel || ''}` : ch.sublabel || ''
-    g.text(ch.cx - 24, ch.y + 34, sub.slice(0, 36), 11, 'mono', 'middle')
+    const labelFontSize = ch.width < 220 ? 11.5 : 13.5
+    const subFontSize = ch.width < 220 ? 10 : 11
+    const labelY = ch.y + 19
+    const subY = ch.y + 36
+
+    let sub = ''
+    if (ch.shape_str && ch.sublabel && ch.width >= 260) {
+      sub = `${ch.shape_str} · ${ch.sublabel}`
+    } else if (ch.shape_str) {
+      sub = ch.shape_str
+    } else {
+      sub = ch.sublabel || ''
+    }
+
+    if (ch.width < 220) {
+      g.text(textLeft, labelY, displayLabel, labelFontSize, '', 'start', 600)
+      g.text(textLeft, subY, sub, subFontSize, 'mono', 'start', 400)
+    } else {
+      g.text(textCenterX, labelY, displayLabel, labelFontSize, '', 'middle', 600)
+      g.text(textCenterX, subY, sub, subFontSize, 'mono', 'middle', 400)
+    }
+  } else {
+    const labelY = ch.y + ch.height / 2 + 5
+    const labelFontSize = ch.width < 220 ? 12 : 14
+    if (ch.width < 220) {
+      g.text(textLeft, labelY, displayLabel, labelFontSize, '', 'start', 600)
+    } else {
+      g.text(textCenterX, labelY, displayLabel, labelFontSize, '', 'middle', 600)
+    }
   }
 
-  // Right-aligned badge
+  // Badge cleanly anchored to the right
   if (ch.badge) {
-    g.rect(ch.rightX - 66, ch.y + 11, 56, 18, 4, 'pill')
-    g.text(ch.rightX - 38, ch.y + 24, ch.badge, 9, 'accent', 'middle', 700)
+    g.rect(badgeX, badgeY, badgeW, badgeH, 4, 'pill')
+    g.text(badgeX + badgeW / 2, badgeY + 13, ch.badge, 9, 'accent', 'middle', 700)
   }
+
   g.raw(`</g>`)
 }
 

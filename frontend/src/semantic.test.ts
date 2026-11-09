@@ -150,4 +150,47 @@ describe('Semantic Architecture Diagram Engine', () => {
     expect(svg).toContain('Elementwise Product')
     expect(svg).toContain('SILU Non-Linearity')
   })
+
+  it('computes magnified side insets with projection rays and non-overlapping layout', () => {
+    const spec = parseConfig(qwenDenseFixture, 'qwen-test')
+    const tree = buildSemanticTree(spec, [])
+    const state: WorkspaceState = {
+      preset: 2, // Module Insets
+      expandedIds: new Set(),
+      collapsedIds: new Set(),
+      selectedLayer: 0,
+      selectedNodeId: null,
+      focusedNodeId: null,
+    }
+    const layout = computeDiagramLayout(tree, spec, state)
+
+    // Side insets must be generated
+    expect(layout.magnifiedInsets).toBeDefined()
+    expect(layout.magnifiedInsets!.length).toBe(2) // Attention & FFN insets
+
+    const attnInset = layout.magnifiedInsets!.find(i => i.kind === 'attention')
+    const ffnInset = layout.magnifiedInsets!.find(i => i.kind === 'ffn')
+    expect(attnInset).toBeDefined()
+    expect(ffnInset).toBeDefined()
+
+    // Bounding boxes in side insets must not overlap horizontally in the same row
+    const qNode = attnInset!.children.find(c => c.kind === 'q_proj')
+    const kNode = attnInset!.children.find(c => c.kind === 'k_proj')
+    const vNode = attnInset!.children.find(c => c.kind === 'v_proj')
+    expect(qNode).toBeDefined()
+    expect(kNode).toBeDefined()
+    expect(vNode).toBeDefined()
+
+    // Q right edge must be strictly less than K left edge (zero horizontal overlap)
+    expect(qNode!.rightX).toBeLessThan(kNode!.leftX)
+    // K right edge must be strictly less than V left edge (zero horizontal overlap)
+    expect(kNode!.rightX).toBeLessThan(vNode!.leftX)
+
+    // SVG must render magnifying rays and translucent projection cone
+    const svg = renderSemanticDiagram(layout, spec, state)
+    expect(svg).toContain('<polygon points=')
+    expect(svg).toContain('class="leader"')
+    expect(svg).toContain('class="inset-accent"')
+    expect(layout.width).toBe(1600)
+  })
 })

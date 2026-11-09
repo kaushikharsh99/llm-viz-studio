@@ -106,6 +106,22 @@ export interface DataflowEdge {
   style?: 'solid' | 'dashed'
 }
 
+export interface MagnifiedInset {
+  id: string
+  kind: 'attention' | 'ffn' | 'moe'
+  title: string
+  sourceNodeId: string
+  sourceX: number
+  sourceTopY: number
+  sourceBottomY: number
+  x: number
+  y: number
+  width: number
+  height: number
+  children: LayoutedNode[]
+  edges: DataflowEdge[]
+}
+
 export interface DiagramLayout {
   width: number
   height: number
@@ -120,6 +136,7 @@ export interface DiagramLayout {
     endCx: number
   }[]
   internalEdges?: DataflowEdge[]
+  magnifiedInsets?: MagnifiedInset[]
   callouts: {
     x: number
     y: number
