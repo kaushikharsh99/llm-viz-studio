@@ -10,20 +10,11 @@ const EXAMPLES = [
   { label: 'Qwen MoE', id: 'Qwen/Qwen3-30B-A3B' },
 ]
 
-function useDark() {
-  const [d, setD] = useState(() => localStorage.getItem('theme') === 'dark')
-  useEffect(() => {
-    localStorage.setItem('theme', d ? 'dark' : 'light')
-  }, [d])
-  return [d, setD] as const
-}
-
 export default function App() {
   const [model, setModel] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('model')
   })
-  const [dark, setDark] = useDark()
 
   useEffect(() => {
     const onPop = () => {
@@ -46,7 +37,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell${dark ? ' dark' : ''}`}>
+    <div className="app-shell">
       <header className="nav">
         <a href="#" className="brand" onClick={(e) => { e.preventDefault(); selectModel(null) }}>
           <span className="brand-mark" aria-hidden="true">◈</span> LLMViz Studio
@@ -56,9 +47,6 @@ export default function App() {
           <a href="https://github.com/kaushikharsh99/llm-viz-studio" target="_blank" rel="noreferrer">
             GitHub
           </a>
-          <button className="theme-toggle" aria-label="Theme toggle" onClick={() => setDark(!dark)}>
-            {dark ? '☀' : '☾'}
-          </button>
         </nav>
       </header>
       {model ? <Viewer model={model} onNewModel={() => selectModel(null)} /> : <Home onSelect={selectModel} />}
