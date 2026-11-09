@@ -125,4 +125,29 @@ describe('Semantic Architecture Diagram Engine', () => {
     expect(svg).toContain('Query Projection')
     expect(layout.width).toBe(900)
   })
+
+  it('renders Preset 3 (Deep operations & computational dataflow edges)', () => {
+    const spec = parseConfig(qwenDenseFixture, 'qwen-test')
+    const tree = buildSemanticTree(spec, [])
+    const state: WorkspaceState = {
+      preset: 3, // Deep detail
+      expandedIds: new Set(),
+      collapsedIds: new Set(),
+      selectedLayer: 0,
+      selectedNodeId: null,
+      focusedNodeId: null,
+    }
+    const layout = computeDiagramLayout(tree, spec, state)
+    const svg = renderSemanticDiagram(layout, spec, state)
+
+    expect(layout.internalEdges).toBeDefined()
+    expect(layout.internalEdges!.length).toBeGreaterThan(0)
+    // Must contain deep attention operations
+    expect(svg).toContain('Scaled Dot-Product')
+    expect(svg).toContain('Causal Mask + Softmax')
+    expect(svg).toContain('Value Aggregation')
+    // Must contain deep FFN operations
+    expect(svg).toContain('Elementwise Product')
+    expect(svg).toContain('SILU Non-Linearity')
+  })
 })

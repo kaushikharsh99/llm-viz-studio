@@ -1,4 +1,15 @@
-export const QK_NORM_MODEL_TYPES = new Set(['qwen3', 'qwen3_moe', 'qwen3_next', 'olmo2', 'gemma3', 'gemma3_text'])
+export const QK_NORM_MODEL_TYPES = new Set([
+  'qwen3',
+  'qwen3_moe',
+  'qwen3_next',
+  'qwen3_5',
+  'qwen3.5',
+  'qwen2_5',
+  'qwen2.5',
+  'olmo2',
+  'gemma3',
+  'gemma3_text',
+])
 export const POST_NORM_MODEL_TYPES = new Set(['olmo2'])
 export const SANDWICH_NORM_MODEL_TYPES = new Set(['gemma2', 'gemma3', 'gemma3_text'])
 

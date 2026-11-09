@@ -31,6 +31,20 @@ export default function DiagramView({ model }: { model: string }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null)
 
+  // In-Diagram Component Search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+
+  // Share Toast
+  const [copiedToast, setCopiedToast] = useState(false)
+
+  // Model Comparison Modal State
+  const [showCompareModal, setShowCompareModal] = useState(false)
+  const [compareModel, setCompareModel] = useState('HuggingFaceTB/SmolLM2-1.7B')
+  const [compareSpec, setCompareSpec] = useState<ArchSpec | null>(null)
+  const [compareLoading, setCompareLoading] = useState(false)
+
   // UI Panels & Canvas Viewport
   const [showInspector, setShowInspector] = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -39,6 +53,59 @@ export default function DiagramView({ model }: { model: string }) {
   const [ty, setTy] = useState(0)
   const drag = useRef<any>(null)
   const stage = useRef<HTMLDivElement>(null)
+
+  // Restore state from URL query parameters on initial mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const p = parseInt(params.get('preset') || '', 10)
+      if (p === 1 || p === 2 || p === 3) setPreset(p as DetailPreset)
+      const l = parseInt(params.get('layer') || '', 10)
+      if (!isNaN(l) && l >= 0) setSelectedLayer(l)
+      const n = params.get('node')
+      if (n) setSelectedNodeId(n)
+      const f = params.get('focus')
+      if (f) setFocusedNodeId(f)
+      const exp = params.get('expanded')
+      if (exp) setExpandedIds(new Set(exp.split(',').filter(Boolean)))
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }, [])
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSearchDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  // Fetch comparison model spec when compare modal opens
+  useEffect(() => {
+    if (!showCompareModal || !compareModel) return
+    let active = true
+    setCompareLoading(true)
+    fetchArchSpec(compareModel)
+      .then(s => {
+        if (active) {
+          setCompareSpec(s)
+          setCompareLoading(false)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCompareSpec(null)
+          setCompareLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [showCompareModal, compareModel])
 
   // Fetch model specifications and safetensors metadata
   useEffect(() => {
@@ -214,6 +281,100 @@ export default function DiagramView({ model }: { model: string }) {
     fit()
   }
 
+  // Filter matching components for in-diagram search
+  const searchMatches = useMemo(() => {
+    if (!layout || !searchQuery.trim()) return []
+    const q = searchQuery.toLowerCase().trim()
+    const matches: LayoutedNode[] = []
+    for (const node of layout.allNodes.values()) {
+      if (
+        node.label.toLowerCase().includes(q) ||
+        node.id.toLowerCase().includes(q) ||
+        (node.badge && node.badge.toLowerCase().includes(q)) ||
+        (node.sublabel && node.sublabel.toLowerCase().includes(q))
+      ) {
+        matches.push(node)
+      }
+    }
+    return matches.slice(0, 8)
+  }, [layout, searchQuery])
+
+  // Zoom to matched component
+  const handleZoomToNode = (node: LayoutedNode) => {
+    // If inside attention and collapsed, expand attention
+    if (
+      node.id.includes('q_proj') ||
+      node.id.includes('k_proj') ||
+      node.id.includes('v_proj') ||
+      node.id.includes('o_proj') ||
+      node.id.includes('rope') ||
+      node.id.includes('attn')
+    ) {
+      const attnId = `layer_${selectedLayer}_attention`
+      setExpandedIds(prev => new Set(prev).add(attnId))
+      setCollapsedIds(prev => {
+        const next = new Set(prev)
+        next.delete(attnId)
+        return next
+      })
+    }
+    // If inside FFN and collapsed, expand FFN
+    if (
+      node.id.includes('gate') ||
+      node.id.includes('up') ||
+      node.id.includes('down') ||
+      node.id.includes('act') ||
+      node.id.includes('hadamard') ||
+      node.id.includes('expert') ||
+      node.id.includes('router')
+    ) {
+      const ffnId = `layer_${selectedLayer}_ffn`
+      setExpandedIds(prev => new Set(prev).add(ffnId))
+      setCollapsedIds(prev => {
+        const next = new Set(prev)
+        next.delete(ffnId)
+        return next
+      })
+    }
+
+    setSelectedNodeId(node.id)
+    setShowInspector(true)
+    setShowSearchDropdown(false)
+    setSearchQuery('')
+
+    const el = stage.current
+    if (el) {
+      const targetScale = Math.max(scale, 1.15)
+      setScale(targetScale)
+      setTx(el.clientWidth / 2 - node.cx * targetScale)
+      setTy(el.clientHeight / 2 - (node.topY + node.height / 2) * targetScale)
+    }
+  }
+
+  // 1-Click Share: synchronizes exact view state into URL query params and copies to clipboard
+  const handleShareView = () => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      params.set('model', model)
+      params.set('preset', String(preset))
+      params.set('layer', String(selectedLayer))
+      if (selectedNodeId) params.set('node', selectedNodeId)
+      else params.delete('node')
+      if (focusedNodeId) params.set('focus', focusedNodeId)
+      else params.delete('focus')
+      if (expandedIds.size > 0) params.set('expanded', Array.from(expandedIds).join(','))
+      else params.delete('expanded')
+
+      const newUrl = window.location.pathname + '?' + params.toString()
+      window.history.replaceState(null, '', newUrl)
+      navigator.clipboard.writeText(window.location.href)
+      setCopiedToast(true)
+      setTimeout(() => setCopiedToast(false), 2500)
+    } catch {
+      // Fallback
+    }
+  }
+
   const isCustomExpanded = expandedIds.size > 0 || collapsedIds.size > 0
 
   if (err) {
@@ -325,10 +486,59 @@ export default function DiagramView({ model }: { model: string }) {
               </select>
             </div>
           )}
+
+          {/* In-Diagram Component Search */}
+          <div className="component-search-wrap" ref={searchRef}>
+            <span className="component-search-icon">🔍</span>
+            <input
+              type="text"
+              className="component-search-input"
+              placeholder="Search (q_proj, silu, norm)..."
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value)
+                setShowSearchDropdown(true)
+              }}
+              onFocus={() => setShowSearchDropdown(true)}
+            />
+            {showSearchDropdown && searchMatches.length > 0 && (
+              <div className="component-search-dropdown" role="listbox">
+                {searchMatches.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className="search-match-item"
+                    onClick={() => handleZoomToNode(m)}
+                  >
+                    <span className="search-match-label" title={m.label}>
+                      {m.label}
+                    </span>
+                    <span className="search-match-badge">{m.badge || m.kind}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right: Viewport Controls & 4-Mode Export Menu */}
+        {/* Right: Viewport Controls, Compare, Share & 4-Mode Export Menu */}
         <div className="toolbar-right-group">
+          <button
+            type="button"
+            className="toolbar-btn btn-compare"
+            onClick={() => setShowCompareModal(true)}
+            title="Compare with another architecture"
+          >
+            ⚖ Compare
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn btn-share"
+            onClick={handleShareView}
+            title="Copy shareable link with current view state"
+          >
+            🔗 {copiedToast ? 'Copied!' : 'Share'}
+          </button>
           <button type="button" className="toolbar-btn" onClick={fit} title="Fit to Screen">
             ⛶ Fit
           </button>
@@ -667,6 +877,179 @@ export default function DiagramView({ model }: { model: string }) {
           </aside>
         )}
       </div>
+
+      {/* 1-Click Share Toast Notification */}
+      {copiedToast && (
+        <div className="share-toast" role="status">
+          ✓ Link copied to clipboard with exact view state!
+        </div>
+      )}
+
+      {/* Side-by-Side Model Architecture Comparison Modal */}
+      {showCompareModal && (
+        <div className="compare-modal-backdrop" onClick={() => setShowCompareModal(false)}>
+          <div className="compare-modal" onClick={e => e.stopPropagation()}>
+            <div className="compare-modal-header">
+              <h3>Side-by-Side Architecture Comparison</h3>
+              <button
+                type="button"
+                className="btn-close-panel"
+                onClick={() => setShowCompareModal(false)}
+                aria-label="Close Comparison"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="compare-modal-body">
+              <div className="compare-selector-row">
+                <label htmlFor="compare-model-input">Compare with Model:</label>
+                <input
+                  id="compare-model-input"
+                  type="text"
+                  value={compareModel}
+                  onChange={e => setCompareModel(e.target.value)}
+                  placeholder="e.g. HuggingFaceTB/SmolLM2-1.7B, Qwen/Qwen2.5-0.5B"
+                />
+              </div>
+
+              {compareLoading ? (
+                <div style={{ textAlign: 'center', padding: '30px' }}>
+                  <div className="spinner" />
+                  <p>Loading {compareModel} architecture...</p>
+                </div>
+              ) : compareSpec ? (
+                <table className="compare-table">
+                  <thead>
+                    <tr>
+                      <th>Specification Metric</th>
+                      <th className="col-model-a">{model}</th>
+                      <th className="col-model-b">{compareModel}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th>Total Parameters</th>
+                      <td className="col-model-a">{fmtParams(spec.total_params)}</td>
+                      <td className="col-model-b">
+                        {fmtParams(compareSpec.total_params)}
+                        {spec.total_params !== compareSpec.total_params && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Layers</th>
+                      <td className="col-model-a">{spec.num_layers}</td>
+                      <td className="col-model-b">
+                        {compareSpec.num_layers}
+                        {spec.num_layers !== compareSpec.num_layers && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Hidden Dimension</th>
+                      <td className="col-model-a">{spec.hidden_size}</td>
+                      <td className="col-model-b">
+                        {compareSpec.hidden_size}
+                        {spec.hidden_size !== compareSpec.hidden_size && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Attention Kind</th>
+                      <td className="col-model-a">{spec.attention?.kind || '—'}</td>
+                      <td className="col-model-b">
+                        {compareSpec.attention?.kind || '—'}
+                        {spec.attention?.kind !== compareSpec.attention?.kind && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Attention Heads</th>
+                      <td className="col-model-a">{spec.attention?.num_heads}</td>
+                      <td className="col-model-b">
+                        {compareSpec.attention?.num_heads}
+                        {spec.attention?.num_heads !== compareSpec.attention?.num_heads && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>KV Heads / Groups</th>
+                      <td className="col-model-a">{spec.attention?.num_kv_heads}</td>
+                      <td className="col-model-b">
+                        {compareSpec.attention?.num_kv_heads}
+                        {spec.attention?.num_kv_heads !== compareSpec.attention?.num_kv_heads && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Intermediate Dimension</th>
+                      <td className="col-model-a">{spec.intermediate_size}</td>
+                      <td className="col-model-b">
+                        {compareSpec.intermediate_size}
+                        {spec.intermediate_size !== compareSpec.intermediate_size && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Normalization</th>
+                      <td className="col-model-a">{spec.norm_type || '—'}</td>
+                      <td className="col-model-b">
+                        {compareSpec.norm_type || '—'}
+                        {spec.norm_type !== compareSpec.norm_type && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Positional Embedding</th>
+                      <td className="col-model-a">{spec.positional || '—'}</td>
+                      <td className="col-model-b">
+                        {compareSpec.positional || '—'}
+                        {spec.positional !== compareSpec.positional && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Context Window</th>
+                      <td className="col-model-a">
+                        {spec.context_length ? `${fmtNum(spec.context_length)} tokens` : '—'}
+                      </td>
+                      <td className="col-model-b">
+                        {compareSpec.context_length ? `${fmtNum(compareSpec.context_length)} tokens` : '—'}
+                        {spec.context_length !== compareSpec.context_length && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Vocab Size</th>
+                      <td className="col-model-a">{fmtNum(spec.vocab_size)}</td>
+                      <td className="col-model-b">
+                        {fmtNum(compareSpec.vocab_size)}
+                        {spec.vocab_size !== compareSpec.vocab_size && (
+                          <span className="compare-diff-badge">Diff</span>
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
+                  Could not load architecture configuration for {compareModel}. Ensure the model ID is correct and has a valid config.json.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

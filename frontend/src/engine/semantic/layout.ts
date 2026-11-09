@@ -1,5 +1,5 @@
 import type { ArchSpec } from '../spec'
-import type { SemanticNode, WorkspaceState, DiagramLayout, LayoutedNode, DetailPreset } from './types'
+import type { SemanticNode, WorkspaceState, DiagramLayout, LayoutedNode, DetailPreset, DataflowEdge } from './types'
 import { fmtCount } from '../render/svg'
 
 const TCX = 470
@@ -50,6 +50,362 @@ function ctxStr(n: number): string {
     return `${Math.floor(n / 1024)}k`
   }
   return n.toLocaleString()
+}
+
+/**
+ * Layout internal computational graph for Attention (GQA / MQA / MHA / MLA)
+ */
+function layoutAttentionInternals(
+  attnNode: SemanticNode,
+  spec: ArchSpec,
+  cx: number,
+  topY: number,
+  preset: DetailPreset,
+  expandedIds: Set<string>,
+  allNodes: Map<string, LayoutedNode>
+): { height: number; width: number; children: LayoutedNode[]; edges: DataflowEdge[] } {
+  const children = attnNode.children || []
+  const layoutedChildren: LayoutedNode[] = []
+  const edges: DataflowEdge[] = []
+  const width = 500
+  const isDeep = preset === 3 || children.some(c => expandedIds.has(c.id))
+
+  function addNode(node: SemanticNode, nCx: number, nY: number, nW: number, nH: number): LayoutedNode {
+    const { children: _c, ...props } = node
+    const ln: LayoutedNode = {
+      ...props,
+      x: nCx - nW / 2,
+      y: nY,
+      width: nW,
+      height: nH,
+      isExpanded: false,
+      cx: nCx,
+      topY: nY,
+      bottomY: nY + nH,
+      leftX: nCx - nW / 2,
+      rightX: nCx + nW / 2,
+    }
+    layoutedChildren.push(ln)
+    allNodes.set(ln.id, ln)
+    return ln
+  }
+
+  const qNode = children.find(c => c.kind === 'q_proj')
+  const kNode = children.find(c => c.kind === 'k_proj')
+  const vNode = children.find(c => c.kind === 'v_proj')
+  const oNode = children.find(c => c.kind === 'o_proj')
+  const ropeNode = children.find(c => c.kind === 'rope_op')
+  const qkNormNode = children.find(c => c.kind === 'qk_norm')
+  const scoresNode = children.find(c => c.kind === 'attn_scores')
+  const softmaxNode = children.find(c => c.kind === 'softmax_op')
+  const ctxNode = children.find(c => c.kind === 'attn_context')
+
+  const isMLA = spec.attention?.kind === 'MLA'
+  if (isMLA) {
+    const qaNode = children.find(c => c.id.includes('_qa'))
+    const qbNode = children.find(c => c.id.includes('_qb'))
+    const kvaNode = children.find(c => c.id.includes('_kva'))
+    const kvbNode = children.find(c => c.id.includes('_kvb'))
+
+    let curY = topY + 36
+    let oLn: LayoutedNode | undefined
+    if (oNode) {
+      oLn = addNode(oNode, cx, curY, 440, 42)
+      curY += 42 + 20
+    }
+    let scoresLn: LayoutedNode | undefined
+    if (scoresNode) {
+      scoresLn = addNode(scoresNode, cx, curY, 440, 38)
+      curY += 38 + 20
+    }
+    let qbLn: LayoutedNode | undefined, kvbLn: LayoutedNode | undefined
+    if (qbNode && kvbNode) {
+      qbLn = addNode(qbNode, cx - 115, curY, 215, 42)
+      kvbLn = addNode(kvbNode, cx + 115, curY, 215, 42)
+      curY += 42 + 20
+    }
+    let qaLn: LayoutedNode | undefined, kvaLn: LayoutedNode | undefined
+    if (qaNode && kvaNode) {
+      qaLn = addNode(qaNode, cx - 115, curY, 215, 42)
+      kvaLn = addNode(kvaNode, cx + 115, curY, 215, 42)
+      curY += 42 + 16
+    }
+    const height = curY - topY + 14
+
+    if (qaLn && qbLn) edges.push({ fromId: qaLn.id, toId: qbLn.id, fromX: qaLn.cx, fromY: qaLn.topY, toX: qbLn.cx, toY: qbLn.bottomY, label: 'Latent Q' })
+    if (kvaLn && kvbLn) edges.push({ fromId: kvaLn.id, toId: kvbLn.id, fromX: kvaLn.cx, fromY: kvaLn.topY, toX: kvbLn.cx, toY: kvbLn.bottomY, label: 'Latent KV' })
+    if (qbLn && scoresLn) edges.push({ fromId: qbLn.id, toId: scoresLn.id, fromX: qbLn.cx, fromY: qbLn.topY, toX: scoresLn.cx - 80, toY: scoresLn.bottomY })
+    if (kvbLn && scoresLn) edges.push({ fromId: kvbLn.id, toId: scoresLn.id, fromX: kvbLn.cx, fromY: kvbLn.topY, toX: scoresLn.cx + 80, toY: scoresLn.bottomY })
+    if (scoresLn && oLn) edges.push({ fromId: scoresLn.id, toId: oLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: oLn.cx, toY: oLn.bottomY })
+
+    return { height, width, children: layoutedChildren, edges }
+  }
+
+  if (!isDeep) {
+    let curY = topY + 36
+    let oLn: LayoutedNode | undefined
+    if (oNode) {
+      oLn = addNode(oNode, cx, curY, 440, 44)
+      curY += 44 + 28
+    }
+    let ropeLn: LayoutedNode | undefined
+    if (ropeNode) {
+      ropeLn = addNode(ropeNode, cx - 75, curY, 280, 36)
+      curY += 36 + 28
+    } else if (qkNormNode) {
+      ropeLn = addNode(qkNormNode, cx - 75, curY, 280, 36)
+      curY += 36 + 28
+    }
+
+    const qLn = qNode ? addNode(qNode, cx - 150, curY, 135, 44) : undefined
+    const kLn = kNode ? addNode(kNode, cx, curY, 135, 44) : undefined
+    const vLn = vNode ? addNode(vNode, cx + 150, curY, 135, 44) : undefined
+
+    const height = (qLn?.bottomY || curY + 44) - topY + 24
+
+    if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 60, toY: ropeLn.bottomY, label: 'Q' })
+    if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 60, toY: ropeLn.bottomY, label: 'K' })
+    if (ropeLn && oLn) edges.push({ fromId: ropeLn.id, toId: oLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: oLn.cx - 60, toY: oLn.bottomY, label: 'Scores' })
+    if (vLn && oLn) edges.push({ fromId: vLn.id, toId: oLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: oLn.cx + 100, toY: oLn.bottomY, label: 'V' })
+
+    return { height, width, children: layoutedChildren, edges }
+  }
+
+  // Preset 3: Deep Computational Subgraph
+  let curY = topY + 36
+  let oLn: LayoutedNode | undefined
+  if (oNode) {
+    oLn = addNode(oNode, cx, curY, 440, 42)
+    curY += 42 + 22
+  }
+  let ctxLn: LayoutedNode | undefined
+  if (ctxNode) {
+    ctxLn = addNode(ctxNode, cx, curY, 440, 38)
+    curY += 38 + 20
+  }
+  let softmaxLn: LayoutedNode | undefined
+  if (softmaxNode) {
+    softmaxLn = addNode(softmaxNode, cx - 75, curY, 290, 36)
+    curY += 36 + 20
+  }
+  let scoresLn: LayoutedNode | undefined
+  if (scoresNode) {
+    scoresLn = addNode(scoresNode, cx - 75, curY, 290, 38)
+    curY += 38 + 20
+  }
+  let ropeLn: LayoutedNode | undefined
+  if (ropeNode) {
+    ropeLn = addNode(ropeNode, cx - 75, curY, 290, 36)
+    curY += 36 + 24
+  } else if (qkNormNode) {
+    ropeLn = addNode(qkNormNode, cx - 75, curY, 290, 36)
+    curY += 36 + 24
+  }
+
+  const qLn = qNode ? addNode(qNode, cx - 150, curY, 135, 44) : undefined
+  const kLn = kNode ? addNode(kNode, cx, curY, 135, 44) : undefined
+  const vLn = vNode ? addNode(vNode, cx + 150, curY, 135, 44) : undefined
+
+  const height = (qLn?.bottomY || curY + 44) - topY + 24
+
+  if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 60, toY: ropeLn.bottomY, label: 'Q' })
+  if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 60, toY: ropeLn.bottomY, label: 'K' })
+  if (ropeLn && scoresLn) edges.push({ fromId: ropeLn.id, toId: scoresLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Q, K' })
+  if (scoresLn && softmaxLn) edges.push({ fromId: scoresLn.id, toId: softmaxLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Scores' })
+  if (softmaxLn && ctxLn) edges.push({ fromId: softmaxLn.id, toId: ctxLn.id, fromX: softmaxLn.cx, fromY: softmaxLn.topY, toX: ctxLn.cx - 80, toY: ctxLn.bottomY, label: 'Weights' })
+  if (vLn && ctxLn) edges.push({ fromId: vLn.id, toId: ctxLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: ctxLn.cx + 100, toY: ctxLn.bottomY, label: 'Values' })
+  if (ctxLn && oLn) edges.push({ fromId: ctxLn.id, toId: oLn.id, fromX: ctxLn.cx, fromY: ctxLn.topY, toX: oLn.cx, toY: oLn.bottomY, label: 'Context' })
+
+  return { height, width, children: layoutedChildren, edges }
+}
+
+/**
+ * Layout internal computational graph for FFN (SwiGLU / MoE)
+ */
+function layoutFfnInternals(
+  ffnNode: SemanticNode,
+  spec: ArchSpec,
+  cx: number,
+  topY: number,
+  preset: DetailPreset,
+  expandedIds: Set<string>,
+  allNodes: Map<string, LayoutedNode>
+): { height: number; width: number; children: LayoutedNode[]; edges: DataflowEdge[] } {
+  const children = ffnNode.children || []
+  const layoutedChildren: LayoutedNode[] = []
+  const edges: DataflowEdge[] = []
+  const width = 500
+  const isDeep = preset === 3 || children.some(c => expandedIds.has(c.id))
+
+  function addNode(node: SemanticNode, nCx: number, nY: number, nW: number, nH: number): LayoutedNode {
+    const { children: _c, ...props } = node
+    const ln: LayoutedNode = {
+      ...props,
+      x: nCx - nW / 2,
+      y: nY,
+      width: nW,
+      height: nH,
+      isExpanded: false,
+      cx: nCx,
+      topY: nY,
+      bottomY: nY + nH,
+      leftX: nCx - nW / 2,
+      rightX: nCx + nW / 2,
+    }
+    layoutedChildren.push(ln)
+    allNodes.set(ln.id, ln)
+    return ln
+  }
+
+  if (spec.moe) {
+    const routerNode = children.find(c => c.kind === 'moe_router')
+    const expNode = children.find(c => c.kind === 'moe_expert_group')
+    const sharedNode = children.find(c => c.kind === 'moe_shared')
+
+    let curY = topY + 36
+    let expLn: LayoutedNode | undefined
+    if (expNode) {
+      expLn = addNode(expNode, cx, curY, 440, 48)
+      curY += 48 + 22
+    }
+    let sharedLn: LayoutedNode | undefined
+    if (sharedNode) {
+      sharedLn = addNode(sharedNode, cx, curY, 440, 42)
+      curY += 42 + 22
+    }
+    let routerLn: LayoutedNode | undefined
+    if (routerNode) {
+      routerLn = addNode(routerNode, cx, curY, 440, 42)
+      curY += 42 + 16
+    }
+    const height = curY - topY + 14
+
+    if (routerLn && expLn) {
+      edges.push({
+        fromId: routerLn.id,
+        toId: expLn.id,
+        fromX: routerLn.cx,
+        fromY: routerLn.topY,
+        toX: expLn.cx,
+        toY: expLn.bottomY,
+        label: 'Routing Probabilities',
+      })
+    }
+
+    return { height, width, children: layoutedChildren, edges }
+  }
+
+  // Dense SwiGLU FFN
+  const gateNode = children.find(c => c.kind === 'gate_proj')
+  const upNode = children.find(c => c.kind === 'up_proj')
+  const downNode = children.find(c => c.kind === 'down_proj')
+  const actNode = children.find(c => c.kind === 'act_op')
+  const hadamardNode = children.find(c => c.kind === 'hadamard_op')
+
+  if (!isDeep) {
+    let curY = topY + 36
+    let downLn: LayoutedNode | undefined
+    if (downNode) {
+      downLn = addNode(downNode, cx, curY, 440, 44)
+      curY += 44 + 30
+    }
+    const gateLn = gateNode ? addNode(gateNode, cx - 115, curY, 210, 44) : undefined
+    const upLn = upNode ? addNode(upNode, cx + 115, curY, 210, 44) : undefined
+
+    const height = (gateLn?.bottomY || curY + 44) - topY + 24
+
+    if (gateLn && downLn) {
+      edges.push({
+        fromId: gateLn.id,
+        toId: downLn.id,
+        fromX: gateLn.cx,
+        fromY: gateLn.topY,
+        toX: downLn.cx - 80,
+        toY: downLn.bottomY,
+        label: 'Gate',
+      })
+    }
+    if (upLn && downLn) {
+      edges.push({
+        fromId: upLn.id,
+        toId: downLn.id,
+        fromX: upLn.cx,
+        fromY: upLn.topY,
+        toX: downLn.cx + 80,
+        toY: downLn.bottomY,
+        label: 'Up',
+      })
+    }
+
+    return { height, width, children: layoutedChildren, edges }
+  }
+
+  // Deep SwiGLU FFN
+  let curY = topY + 36
+  let downLn: LayoutedNode | undefined
+  if (downNode) {
+    downLn = addNode(downNode, cx, curY, 440, 42)
+    curY += 42 + 24
+  }
+  let hadamardLn: LayoutedNode | undefined
+  if (hadamardNode) {
+    hadamardLn = addNode(hadamardNode, cx, curY, 300, 38)
+    curY += 38 + 22
+  }
+  const actLn = actNode ? addNode(actNode, cx - 115, curY, 205, 36) : undefined
+  const upLn = upNode ? addNode(upNode, cx + 115, curY, 205, 44) : undefined
+
+  curY += 36 + 22
+  const gateLn = gateNode ? addNode(gateNode, cx - 115, curY, 205, 44) : undefined
+
+  const height = (gateLn?.bottomY || curY + 44) - topY + 24
+
+  if (gateLn && actLn) {
+    edges.push({
+      fromId: gateLn.id,
+      toId: actLn.id,
+      fromX: gateLn.cx,
+      fromY: gateLn.topY,
+      toX: actLn.cx,
+      toY: actLn.bottomY,
+      label: 'Gate(X)',
+    })
+  }
+  if (actLn && hadamardLn) {
+    edges.push({
+      fromId: actLn.id,
+      toId: hadamardLn.id,
+      fromX: actLn.cx,
+      fromY: actLn.topY,
+      toX: hadamardLn.cx - 60,
+      toY: hadamardLn.bottomY,
+      label: 'SiLU(G)',
+    })
+  }
+  if (upLn && hadamardLn) {
+    edges.push({
+      fromId: upLn.id,
+      toId: hadamardLn.id,
+      fromX: upLn.cx,
+      fromY: upLn.topY,
+      toX: hadamardLn.cx + 60,
+      toY: hadamardLn.bottomY,
+      label: 'Up(X)',
+    })
+  }
+  if (hadamardLn && downLn) {
+    edges.push({
+      fromId: hadamardLn.id,
+      toId: downLn.id,
+      fromX: hadamardLn.cx,
+      fromY: hadamardLn.topY,
+      toX: downLn.cx,
+      toY: downLn.bottomY,
+      label: 'Gate ⊗ Up',
+    })
+  }
+
+  return { height, width, children: layoutedChildren, edges }
 }
 
 /**
@@ -207,6 +563,8 @@ export function computeDiagramLayout(
   allNodes.set(layoutedRes2.id, layoutedRes2)
   y = plus2Y + 36
 
+  const internalEdges: DataflowEdge[] = []
+
   // FFN / MoE Block
   const ffnTop = y
   let ffnH = 48
@@ -214,34 +572,11 @@ export function computeDiagramLayout(
   const ffnChildrenLayouted: LayoutedNode[] = []
 
   if (isFfnExpanded && ffnNode?.children) {
-    ffnW = 420
-    let childY = ffnTop + 24
-    for (const ch of ffnNode.children) {
-      const isDeep = ch.default_detail_level === 3
-      if (isDeep && preset < 3 && !expandedIds.has(ch.id)) {
-        continue
-      }
-      const chH = 44
-      const chW = 380
-      const { children: _cch, ...chProps } = ch
-      const lch: LayoutedNode = {
-        ...chProps,
-        x: cx - chW / 2,
-        y: childY,
-        width: chW,
-        height: chH,
-        isExpanded: false,
-        cx,
-        topY: childY,
-        bottomY: childY + chH,
-        leftX: cx - chW / 2,
-        rightX: cx + chW / 2,
-      }
-      ffnChildrenLayouted.push(lch)
-      allNodes.set(lch.id, lch)
-      childY += chH + 12
-    }
-    ffnH = childY - ffnTop + 14
+    const ffnRes = layoutFfnInternals(ffnNode, spec, cx, ffnTop, preset, expandedIds, allNodes)
+    ffnW = ffnRes.width
+    ffnH = ffnRes.height
+    ffnChildrenLayouted.push(...ffnRes.children)
+    internalEdges.push(...ffnRes.edges)
   }
 
   const { children: _fch, ...ffnProps } = ffnNode || {
@@ -325,34 +660,11 @@ export function computeDiagramLayout(
   const attnChildrenLayouted: LayoutedNode[] = []
 
   if (isAttnExpanded && attnNode?.children) {
-    attnW = 420
-    let childY = attnTop + 24
-    for (const ch of attnNode.children) {
-      const isDeep = ch.default_detail_level === 3
-      if (isDeep && preset < 3 && !expandedIds.has(ch.id)) {
-        continue
-      }
-      const chH = 44
-      const chW = 380
-      const { children: _ach, ...chProps } = ch
-      const lch: LayoutedNode = {
-        ...chProps,
-        x: cx - chW / 2,
-        y: childY,
-        width: chW,
-        height: chH,
-        isExpanded: false,
-        cx,
-        topY: childY,
-        bottomY: childY + chH,
-        leftX: cx - chW / 2,
-        rightX: cx + chW / 2,
-      }
-      attnChildrenLayouted.push(lch)
-      allNodes.set(lch.id, lch)
-      childY += chH + 12
-    }
-    attnH = childY - attnTop + 14
+    const attnRes = layoutAttentionInternals(attnNode, spec, cx, attnTop, preset, expandedIds, allNodes)
+    attnW = attnRes.width
+    attnH = attnRes.height
+    attnChildrenLayouted.push(...attnRes.children)
+    internalEdges.push(...attnRes.edges)
   }
 
   const { children: _achTop, ...attnProps } = attnNode || {
@@ -460,23 +772,30 @@ export function computeDiagramLayout(
   }
   allNodes.set(layoutedTok.id, layoutedTok)
 
+  const isWide = isAttnExpanded || isFfnExpanded
+  const currentBlkW = isWide ? 620 : 510
+  const currentOuterW = isWide ? 760 : 640
+  const blkX = cx - currentBlkW / 2
+  const outerX = cx - currentOuterW / 2
+  const railX = blkX + currentBlkW - 45
+
   const totalHeight = tokY + tokH + 140
   const isMoeWithInset = spec.moe && !isFfnExpanded
-  const totalWidth = isMoeWithInset ? 1540 : 1100
+  const totalWidth = isMoeWithInset ? 1540 : (isWide ? 1220 : 1100)
 
   // Residual bypass rails
   const residualRails = [
     {
       startCx: cx,
       startY: norm1Bot + 20,
-      railX: RAIL_X,
+      railX: railX,
       endY: plus1Y,
       endCx: cx + 17,
     },
     {
       startCx: cx,
       startY: layoutedNorm2.bottomY + 18,
-      railX: RAIL_X,
+      railX: railX,
       endY: plus2Y,
       endCx: cx + 17,
     },
@@ -552,17 +871,18 @@ export function computeDiagramLayout(
     ],
     allNodes,
     residualRails,
+    internalEdges,
     callouts,
     outerContainer: {
-      x: OUTER_X,
+      x: outerX,
       y: outerTop,
-      w: OUTER_W,
+      w: currentOuterW,
       h: outerH,
     },
     repeatedBlockContainer: {
-      x: BLK_X,
+      x: blkX,
       y: blkTop,
-      w: BLK_W,
+      w: currentBlkW,
       h: blkH,
       numLayers: spec.num_layers,
     },
@@ -579,9 +899,80 @@ function computeFocusLayout(
 ): DiagramLayout {
   const allNodes = new Map<string, LayoutedNode>()
   const cx = 450
+  const isAttn = focusNode.kind === 'attention'
+  const isFfn = focusNode.kind === 'ffn' || focusNode.kind === 'moe'
+
+  if (isAttn) {
+    const res = layoutAttentionInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes)
+    const focusW = 560
+    const focusH = res.height
+    const { children: _fCh, ...focusProps } = focusNode
+    const rootLayouted: LayoutedNode = {
+      ...focusProps,
+      x: cx - focusW / 2,
+      y: 110,
+      width: focusW,
+      height: focusH + 30,
+      isExpanded: true,
+      children: res.children,
+      cx,
+      topY: 110,
+      bottomY: 110 + focusH + 30,
+      leftX: cx - focusW / 2,
+      rightX: cx + focusW / 2,
+    }
+    allNodes.set(rootLayouted.id, rootLayouted)
+    const totalWidth = 900
+    const totalHeight = Math.max(650, 110 + focusH + 80)
+    return {
+      width: totalWidth,
+      height: totalHeight,
+      viewBox: `0 0 ${totalWidth} ${totalHeight}`,
+      rootNodes: [rootLayouted],
+      allNodes,
+      residualRails: [],
+      internalEdges: res.edges,
+      callouts: [],
+    }
+  }
+
+  if (isFfn) {
+    const res = layoutFfnInternals(focusNode, spec, cx, 140, 3, state.expandedIds, allNodes)
+    const focusW = 560
+    const focusH = res.height
+    const { children: _fCh, ...focusProps } = focusNode
+    const rootLayouted: LayoutedNode = {
+      ...focusProps,
+      x: cx - focusW / 2,
+      y: 110,
+      width: focusW,
+      height: focusH + 30,
+      isExpanded: true,
+      children: res.children,
+      cx,
+      topY: 110,
+      bottomY: 110 + focusH + 30,
+      leftX: cx - focusW / 2,
+      rightX: cx + focusW / 2,
+    }
+    allNodes.set(rootLayouted.id, rootLayouted)
+    const totalWidth = 900
+    const totalHeight = Math.max(650, 110 + focusH + 80)
+    return {
+      width: totalWidth,
+      height: totalHeight,
+      viewBox: `0 0 ${totalWidth} ${totalHeight}`,
+      rootNodes: [rootLayouted],
+      allNodes,
+      residualRails: [],
+      internalEdges: res.edges,
+      callouts: [],
+    }
+  }
+
+  // Fallback vertical stack for other nodes
   let y = 140
   const children = focusNode.children || []
-
   const layoutedChildren: LayoutedNode[] = []
   for (const ch of children) {
     const chH = 52
@@ -634,6 +1025,7 @@ function computeFocusLayout(
     rootNodes: [rootLayouted],
     allNodes,
     residualRails: [],
+    internalEdges: [],
     callouts: [],
   }
 }

@@ -94,6 +94,18 @@ export interface LayoutedNode extends Omit<SemanticNode, 'children'> {
   rightX: number
 }
 
+export interface DataflowEdge {
+  fromId: string
+  toId: string
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+  label?: string
+  badge?: string
+  style?: 'solid' | 'dashed'
+}
+
 export interface DiagramLayout {
   width: number
   height: number
@@ -107,6 +119,7 @@ export interface DiagramLayout {
     endY: number
     endCx: number
   }[]
+  internalEdges?: DataflowEdge[]
   callouts: {
     x: number
     y: number

@@ -19,7 +19,10 @@ Transform Hugging Face model configurations and SafeTensors checkpoints into uni
   - Export Preset 2 (Module Detail SVG / PNG)
   - Export Preset 3 (Deep Detail SVG / PNG)
   - Export Current Workspace (custom layout with your exact expansion arrangement)
-- **Model-Specific Architecture Adapters**: Verified support for Llama / SmolLM2, Qwen 2 / 2.5, Qwen 3, and DeepSeek MLA & MoE.
+- **Model-Specific Architecture Adapters**: Verified support for Llama / SmolLM2, Qwen 2 / 2.5, Qwen 3 / 3.5, and DeepSeek MLA & MoE.
+- **In-Diagram Component Search & Auto-Zoom**: Search any operator, tensor, or projection layer with instant animated zoom-to-node and contextual inspection.
+- **Direct Model URLs & 1-Click Workspace Sharing**: Open any model directly via URL pathname (e.g. `https://llm-viz-studio.vercel.app/Qwen/Qwen2.5-1.5B-Instruct`) and share your exact expansion arrangement via URL.
+- **Side-by-Side Architecture Comparison**: Compare any two models side-by-side with color-coded structural diffs across attention, parameters, MoE routing, and layer dimensions.
 - **100% Client-Side & Serverless**: Safe bounded HTTP Range requests directly to Hugging Face, running entirely in your browser with zero backend latency.
 
 ## Quick Start (Development)

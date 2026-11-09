@@ -21,9 +21,9 @@
   --text-subtle: #94a3b8;
 
   /* Accents */
-  --accent-primary: #2563eb;
-  --accent-primary-hover: #1d4ed8;
-  --accent-primary-subtle: #eff6ff;
+  --accent-primary: #000000;
+  --accent-primary-hover: #1e293b;
+  --accent-primary-subtle: #f1f5f9;
 
   --accent-coral: #ea580c;
   --accent-purple: #9333ea;
@@ -143,9 +143,9 @@ code {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--accent-primary);
-  background: var(--accent-primary-subtle);
-  border: 1px solid #bfdbfe;
+  color: var(--text-main);
+  background: var(--bg-surface-subtle);
+  border: 1px solid var(--border-strong);
   border-radius: 9999px;
   margin-bottom: 16px;
 }
@@ -733,8 +733,8 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: #eff6ff;
-  border-bottom: 1px solid #bfdbfe;
+  background: var(--bg-surface-subtle);
+  border-bottom: 1px solid var(--border-subtle);
   z-index: 20;
 }
 
@@ -763,14 +763,14 @@ code {
   font-size: 12px;
   font-weight: 600;
   background: #ffffff;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  color: var(--accent-primary);
+  color: var(--text-main);
   cursor: pointer;
 }
 
 .btn-exit-focus:hover {
-  background: #dbeafe;
+  background: var(--bg-surface-subtle);
 }
 
 /* Canvas Row */
@@ -860,9 +860,9 @@ code {
   letter-spacing: 0.05em;
   padding: 2px 6px;
   border-radius: 4px;
-  background: var(--accent-primary-subtle);
-  color: var(--accent-primary);
-  border: 1px solid #bfdbfe;
+  background: var(--bg-surface-subtle);
+  color: var(--text-main);
+  border: 1px solid var(--border-strong);
 }
 
 .btn-inline-toggle {
@@ -1036,4 +1036,230 @@ code {
     border-left: none;
     border-top: 1px solid var(--border-subtle);
   }
+}
+
+/* =========================================================================
+   Component Search, Sharing & Model Comparison Modal
+   ========================================================================= */
+
+.component-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.component-search-input {
+  padding: 5px 10px 5px 28px;
+  font-size: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-main);
+  width: 190px;
+  transition: all 0.15s ease;
+}
+
+.component-search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: var(--bg-surface);
+  width: 250px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+}
+
+.component-search-icon {
+  position: absolute;
+  left: 9px;
+  font-size: 12px;
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.component-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-match-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+  width: 100%;
+}
+
+.search-match-item:hover {
+  background: var(--bg-surface-subtle);
+}
+
+.search-match-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.search-match-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.share-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000000;
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  animation: toast-in 0.2s ease-out;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Compare Modal */
+.compare-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+  padding: 20px;
+}
+
+.compare-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 860px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.compare-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.compare-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.compare-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.compare-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.compare-selector-row label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.compare-selector-row select, .compare-selector-row input {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  flex: 1;
+  min-width: 200px;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.compare-table th, .compare-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.compare-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  width: 28%;
+}
+
+.compare-table td.col-model-a, .compare-table td.col-model-b {
+  font-weight: 500;
+  width: 36%;
+}
+
+.compare-diff-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #0f172a;
+  margin-left: 6px;
 }

@@ -7,7 +7,7 @@ export const PILL = '#ffffff'
 export const INSET_GRAY = '#cccccc'
 
 export const ACCENTS: Record<string, string> = {
-  blue: '#4d76ea',
+  black: '#000000',
   coral: '#ff664f',
   green: '#1e9e63',
   violet: '#8b5cf6',
@@ -17,10 +17,10 @@ export const ACCENTS: Record<string, string> = {
 const ACCENT_ORDER = Object.values(ACCENTS)
 
 const FAMILY_ACCENT: Record<string, string> = {
-  gpt_oss: ACCENTS.blue,
+  gpt_oss: '#000000',
   deepseek_v3: ACCENTS.coral,
-  llama: ACCENTS.blue,
-  gpt2: ACCENTS.blue,
+  llama: '#000000',
+  gpt2: '#000000',
   qwen3: ACCENTS.violet,
   qwen3_moe: ACCENTS.violet,
   gemma3: ACCENTS.teal,
@@ -39,13 +39,19 @@ export function accentFor(modelType: string): string {
 }
 
 export function blockTint(accent: string): string {
-  const a = accent.replace('#', '')
+  const a = accent.replace('#', '').toLowerCase()
+  if (a === '000000' || a === '0f172a' || a === '1e293b') {
+    return '#f1f5f9'
+  }
   const ch = [0, 2, 4].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * 0.67 + 255 * 0.33))
   return '#' + ch.map(c => c.toString(16).padStart(2, '0')).join('')
 }
 
 export function accentOnDark(accent: string): string {
-  const a = accent.replace('#', '')
+  const a = accent.replace('#', '').toLowerCase()
+  if (a === '000000' || a === '0f172a' || a === '1e293b') {
+    return '#ffffff'
+  }
   const ch = [0, 2, 4].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * 0.55 + 255 * 0.45))
   return '#' + ch.map(c => c.toString(16).padStart(2, '0')).join('')
 }

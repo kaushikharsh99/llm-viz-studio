@@ -29,13 +29,29 @@ export function cleanModelId(raw: string): string | null {
 export default function App() {
   const [model, setModel] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get('model')
+    const m = params.get('model')
+    if (m) return m
+    const path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+    if (path && path.includes('/') && !path.includes('.')) {
+      return path
+    }
+    return null
   })
 
   useEffect(() => {
     const onPop = () => {
       const params = new URLSearchParams(window.location.search)
-      setModel(params.get('model'))
+      const m = params.get('model')
+      if (m) {
+        setModel(m)
+        return
+      }
+      const path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+      if (path && path.includes('/') && !path.includes('.')) {
+        setModel(path)
+        return
+      }
+      setModel(null)
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)

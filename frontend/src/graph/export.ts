@@ -16,7 +16,7 @@ const KIND_COLORS: Record<string, { fill: string; stroke: string; text: string; 
   attention_op: { fill: '#f8fafc', stroke: '#94a3b8', text: '#334155', badge: '#e2e8f0' },
   router: { fill: '#fdf4ff', stroke: '#c026d3', text: '#86198f', badge: '#f5d0fe' },
   expert: { fill: '#fff1f2', stroke: '#e11d48', text: '#be123c', badge: '#fecdd3' },
-  head: { fill: '#eff6ff', stroke: '#2563eb', text: '#1d4ed8', badge: '#bfdbfe' },
+  head: { fill: '#f8fafc', stroke: '#0f172a', text: '#0f172a', badge: '#e2e8f0' },
   io: { fill: '#f1f5f9', stroke: '#64748b', text: '#334155', badge: '#cbd5e1' },
   unknown: { fill: '#fef2f2', stroke: '#ef4444', text: '#b91c1c', badge: '#fecaca' },
 }

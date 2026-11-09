@@ -99,6 +99,29 @@ export function renderSemanticDiagram(
     renderNode(g, n, spec, state, nodeAttrs, isInteractive, selectedId)
   }
 
+  // Render Internal Computational Dataflow Edges
+  if (layout.internalEdges) {
+    for (const edge of layout.internalEdges) {
+      const isSelected = selectedId === edge.fromId || selectedId === edge.toId
+      const strokeCol = isSelected ? '#000000' : '#475569'
+      const strokeW = isSelected ? 2.5 : 1.6
+
+      if (Math.abs(edge.fromX - edge.toX) < 6) {
+        g.arrow(edge.fromX, edge.fromY, edge.toX, edge.toY)
+      } else {
+        const midY = (edge.fromY + edge.toY) / 2
+        g.path(`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${midY}, ${edge.toX} ${midY}, ${edge.toX} ${edge.toY + 6}`)
+        g.arrow(edge.toX, edge.toY + 6, edge.toX, edge.toY)
+      }
+
+      if (edge.label) {
+        const midX = (edge.fromX + edge.toX) / 2 + (edge.fromX !== edge.toX ? 8 : 12)
+        const midY = (edge.fromY + edge.toY) / 2
+        g.text(midX, midY, edge.label, 11, 'mono', 'start', 600)
+      }
+    }
+  }
+
   // Vertical Connecting Arrows along Central Spine
   const nodeMap = layout.allNodes
   const head = nodeMap.get('lm_head')
@@ -265,24 +288,28 @@ function renderChildPill(
   spec: ArchSpec,
   nodeAttrs: (n: LayoutedNode) => string
 ): void {
+  g.raw(`<g ${nodeAttrs(ch)} id="${escapeHtml(ch.id)}">`)
   const isTensor = ch.kind.includes('proj') || ch.kind.includes('weight')
-  const isMathOp = ch.kind.includes('op') || ch.kind.includes('scores')
-  const pillClass = isMathOp ? 'pill' : isTensor ? 'pill' : 'pill'
+  const isMathOp = ch.kind.includes('op') || ch.kind.includes('scores') || ch.kind.includes('softmax')
+  const pillClass = 'pill'
 
   g.rect(ch.x, ch.y, ch.width, ch.height, 10, pillClass)
 
   // Label & Dimension Sublabel
-  g.text(ch.cx - 30, ch.y + 22, ch.label, 15, '', 'middle', 600)
-  if (ch.sublabel || ch.shape_str) {
+  const hasSub = Boolean(ch.sublabel || ch.shape_str)
+  const labelY = hasSub ? ch.y + 18 : ch.y + ch.height / 2 + 5
+  g.text(ch.cx - 24, labelY, ch.label, 13, '', 'middle', 600)
+  if (hasSub) {
     const sub = ch.shape_str ? `${ch.shape_str} · ${ch.sublabel || ''}` : ch.sublabel || ''
-    g.text(ch.cx - 30, ch.y + 38, sub.slice(0, 42), 12, 'mono', 'middle')
+    g.text(ch.cx - 24, ch.y + 34, sub.slice(0, 36), 11, 'mono', 'middle')
   }
 
   // Right-aligned badge
   if (ch.badge) {
-    g.rect(ch.rightX - 70, ch.y + 12, 58, 20, 4, 'pill')
-    g.text(ch.rightX - 41, ch.y + 26, ch.badge, 10, 'accent', 'middle', 700)
+    g.rect(ch.rightX - 66, ch.y + 11, 56, 18, 4, 'pill')
+    g.text(ch.rightX - 38, ch.y + 24, ch.badge, 9, 'accent', 'middle', 700)
   }
+  g.raw(`</g>`)
 }
 
 /**
