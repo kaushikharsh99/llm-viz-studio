@@ -552,6 +552,23 @@ code {
   flex-wrap: wrap;
 }
 
+.diagram-view-switch button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.diagram-view-switch button[aria-pressed="true"] {
+  background: #164e63;
+  color: white;
+}
+
 /* Detail Slider Control */
 .detail-slider-control {
   display: flex;
@@ -787,29 +804,124 @@ code {
   height: 100%;
   overflow: hidden;
   position: relative;
-  background: #fdfdfd;
+  background: #f4f7fa radial-gradient(circle, #c3cfdc 1px, transparent 1px) 0 0 / 20px 20px;
   user-select: none;
+  touch-action: none;
+  cursor: grab;
+  min-height: 0;
+  min-width: 0;
+}
+
+.interactive-stage:active {
+  cursor: grabbing;
+}
+
+.interactive-stage:focus-visible {
+  outline: 2px solid #0e7490;
+  outline-offset: -2px;
+}
+
+.interactive-stage.is-spatial {
+  background: radial-gradient(ellipse at 50% 44%, #fff 0%, #edf3f6 66%, #e6edf4 100%);
+}
+
+.tensor-scene-caption {
+  position: absolute;
+  top: 17px;
+  left: 18px;
+  display: grid;
+  gap: 5px;
+  color: #233248;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.tensor-scene-caption > span {
+  color: #53657c;
+  font-size: 11px;
+}
+
+.tensor-scene-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0;
+  margin: 3px 0 0;
+  list-style: none;
+  font-size: 11px;
+}
+
+.tensor-scene-key li {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.tensor-scene-key i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.tensor-key-weights { background: #6175bc; }
+.tensor-key-activations { background: #48a78f; }
+.tensor-key-operations { background: #d99b51; }
+
+.tensor-walkthrough {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 11px;
+  border: 1px solid #c9dedc;
+  border-radius: 8px;
+  background: #eef7f6;
+  color: #20384a;
+  font-size: 12px;
+}
+
+.tensor-walkthrough > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.tensor-step-count {
+  font-variant-numeric: tabular-nums;
+  color: #4c6474;
+  white-space: nowrap;
+}
+
+.tensor-walkthrough-actions button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.is-spatial .svg-viewport-wrapper svg {
+  overflow: visible;
+}
+
+.diagram-orbit-controls {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  cursor: default;
 }
 
 .svg-viewport-wrapper {
   position: absolute;
   top: 0;
   left: 0;
-  transition: transform 0.05s ease-out;
-}
-
-/* Interactive SVG Nodes */
-.interactive-node {
-  transition: opacity 0.15s, filter 0.15s;
-}
-
-.interactive-node:hover {
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
-}
-
-.interactive-node.node-selected rect {
-  stroke: var(--accent-primary) !important;
-  stroke-width: 3.5 !important;
 }
 
 /* Contextual Inspector Panel */
@@ -1032,7 +1144,7 @@ code {
   }
   .contextual-inspector-panel {
     width: 100%;
-    height: 300px;
+    height: min(34%, 300px);
     border-left: none;
     border-top: 1px solid var(--border-subtle);
   }

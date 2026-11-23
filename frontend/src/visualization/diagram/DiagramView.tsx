@@ -1,21 +1,23 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import {
   fetchArchSpec,
   fetchModelInventory,
   downloadArchitectureDiagram,
-  generateDiagramSvg,
 } from '../../shared/api/api'
 import { fmtParams, fmtNum, type ArchSpec } from '../../shared/model-metadata/types'
 import type { TensorInfo } from '../../graph/types'
 import { buildSemanticTree } from '../../engine/semantic/tree'
 import { computeDiagramLayout } from '../../engine/semantic/layout'
 import { renderSemanticDiagram } from '../../engine/semantic/render'
+import { visibleTensorNodes } from '../../engine/semantic/tensorScene'
+import { DEFAULT_CAMERA, ROTATION_KEYS, rotateCamera, type DiagramCamera } from '../../engine/semantic/orbit'
 import type {
-  SemanticNode,
   WorkspaceState,
   DetailPreset,
   LayoutedNode,
 } from '../../engine/semantic/types'
+
+const InferenceWalkthrough = lazy(() => import('../inference/InferenceWalkthrough'))
 
 export default function DiagramView({ model }: { model: string }) {
   const [spec, setSpec] = useState<ArchSpec | null>(null)
@@ -46,13 +48,26 @@ export default function DiagramView({ model }: { model: string }) {
   const [compareLoading, setCompareLoading] = useState(false)
 
   // UI Panels & Canvas Viewport
+  const [showInference, setShowInference] = useState(false)
+  const [spatial, setSpatial] = useState(() => new URLSearchParams(window.location.search).get('view') === '3d')
+  const [camera, setCamera] = useState(DEFAULT_CAMERA)
   const [showInspector, setShowInspector] = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [scale, setScale] = useState(1)
   const [tx, setTx] = useState(0)
   const [ty, setTy] = useState(0)
-  const drag = useRef<any>(null)
+  const drag = useRef<{
+    pointerId: number
+    x: number
+    y: number
+    tx: number
+    ty: number
+    camera: DiagramCamera | null
+    moved: boolean
+  } | null>(null)
+  const skipClick = useRef(false)
   const stage = useRef<HTMLDivElement>(null)
+  const keyboardNode = useRef<string | null>(null)
 
   // Restore state from URL query parameters on initial mount
   useEffect(() => {
@@ -68,6 +83,8 @@ export default function DiagramView({ model }: { model: string }) {
       if (f) setFocusedNodeId(f)
       const exp = params.get('expanded')
       if (exp) setExpandedIds(new Set(exp.split(',').filter(Boolean)))
+      const collapsed = params.get('collapsed')
+      if (collapsed) setCollapsedIds(new Set(collapsed.split(',').filter(Boolean)))
     } catch {
       // Ignore URL parsing errors
     }
@@ -109,30 +126,32 @@ export default function DiagramView({ model }: { model: string }) {
 
   // Fetch model specifications and safetensors metadata
   useEffect(() => {
-    const c = new AbortController()
+    // Metadata requests are shared across consumers, including Strict Mode remounts.
+    let active = true
     setLoading(true)
     setErr('')
     ;(async () => {
       try {
         const [s, inv] = await Promise.all([
-          fetchArchSpec(model, c.signal),
-          fetchModelInventory(model, c.signal).catch(() => ({
+          fetchArchSpec(model),
+          fetchModelInventory(model).catch(() => ({
             tensors: [],
             available: false,
             coverage: undefined as any,
           })),
         ])
+        if (!active) return
         setSpec(s)
         setTensors(inv.tensors || [])
         setLoading(false)
       } catch (e: any) {
-        if (e.name !== 'AbortError') {
+        if (active) {
           setErr(e.message || 'Failed to load model specification')
           setLoading(false)
         }
       }
     })()
-    return () => c.abort()
+    return () => { active = false }
   }, [model])
 
   // Build semantic tree
@@ -165,102 +184,159 @@ export default function DiagramView({ model }: { model: string }) {
     if (!layout || !spec) return ''
     return renderSemanticDiagram(layout, spec, workspaceState, {
       interactive: true,
+      camera: spatial ? camera : undefined,
+      viewportScale: spatial ? scale : undefined,
       selectedNodeId,
       focusedNodeId,
     })
-  }, [layout, spec, workspaceState, selectedNodeId, focusedNodeId])
+  }, [layout, spec, workspaceState, selectedNodeId, focusedNodeId, spatial, camera, scale])
+
+  useEffect(() => {
+    if (!keyboardNode.current) return
+    const nodes = stage.current?.querySelectorAll<SVGElement>('[data-node-id]')
+    Array.from(nodes ?? []).find(node => node.dataset.nodeId === keyboardNode.current)?.focus()
+    keyboardNode.current = null
+  }, [svgString])
+
+  const walkthrough = useMemo(() => layout && spatial ? visibleTensorNodes(layout) : [], [layout, spatial])
+  const walkthroughIndex = walkthrough.findIndex(node => node.id === selectedNodeId)
+
+  const moveWalkthrough = (offset: number) => {
+    const next = walkthrough[walkthroughIndex + offset]
+    if (next) setSelectedNodeId(next.id)
+  }
 
   // Selected node lookup for inspector
-  const selectedNode: LayoutedNode | SemanticNode | null = useMemo(() => {
+  const selectedNode: LayoutedNode | null = useMemo(() => {
     if (!selectedNodeId || !layout) return null
     return layout.allNodes.get(selectedNodeId) || null
   }, [selectedNodeId, layout])
 
   // Focus node lookup for breadcrumbs
-  const focusedNode: LayoutedNode | SemanticNode | null = useMemo(() => {
+  const focusedNode: LayoutedNode | null = useMemo(() => {
     if (!focusedNodeId || !layout) return null
     return layout.allNodes.get(focusedNodeId) || null
   }, [focusedNodeId, layout])
 
-  // Auto-fit to screen
+  const diagramWidth = layout?.width
+  const diagramHeight = layout?.height
   const fit = useCallback(() => {
     const el = stage.current
-    if (!el || !layout) return
-    const pad = 40
-    const availW = el.clientWidth - pad * 2
-    const availH = el.clientHeight - pad * 2
-    const targetScale = Math.min(availW / layout.width, availH / layout.height, 1)
-    setScale(Math.max(0.2, targetScale))
-    setTx(Math.max(10, (el.clientWidth - layout.width * targetScale) / 2))
-    setTy(20)
-  }, [layout])
+    if (!el || !diagramWidth || !diagramHeight || !el.clientWidth || !el.clientHeight) return
+    const pad = 24
+    const compactScene = spatial && el.clientWidth < 600
+    const top = compactScene ? 76 : pad
+    const bottom = compactScene ? 50 : pad
+    const targetScale = Math.max(0.08, Math.min(
+      (el.clientWidth - pad * 2) / diagramWidth,
+      (el.clientHeight - top - bottom) / diagramHeight,
+      1,
+    ))
+    setScale(targetScale)
+    setTx((el.clientWidth - diagramWidth * targetScale) / 2)
+    setTy(top + (el.clientHeight - top - bottom - diagramHeight * targetScale) / 2)
+  }, [diagramWidth, diagramHeight, spatial])
 
   useEffect(() => {
-    if (layout && !drag.current) {
-      fit()
-    }
-  }, [layout?.width, fit])
+    const el = stage.current
+    if (!el) return
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fit, loading, err, showInference])
 
-  // Mouse wheel zoom
+  const zoomAt = useCallback((factor: number, x: number, y: number) => {
+    const nextScale = Math.min(6, Math.max(0.08, scale * factor))
+    const ratio = nextScale / scale
+    setScale(nextScale)
+    setTx(tx => x - (x - tx) * ratio)
+    setTy(ty => y - (y - ty) * ratio)
+  }, [scale])
+
   useEffect(() => {
     const el = stage.current
     if (!el) return
     const fn = (e: WheelEvent) => {
       e.preventDefault()
-      setScale(s => Math.min(6, Math.max(0.08, s * (e.deltaY < 0 ? 1.12 : 0.89))))
+      const bounds = el.getBoundingClientRect()
+      zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - bounds.left, e.clientY - bounds.top)
     }
     el.addEventListener('wheel', fn, { passive: false })
     return () => el.removeEventListener('wheel', fn)
-  }, [])
+  }, [zoomAt, loading, err, showInference])
 
-  // Drag pan handlers
-  const onDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.interactive-node')) {
-      // Don't drag if clicking interactive element
-    }
-    drag.current = { x: e.clientX, y: e.clientY, tx, ty }
+  const zoomFromCenter = (factor: number) => {
+    const el = stage.current
+    if (el) zoomAt(factor, el.clientWidth / 2, el.clientHeight / 2)
   }
 
-  const onMove = (e: React.MouseEvent) => {
-    if (drag.current) {
-      setTx(drag.current.tx + e.clientX - drag.current.x)
-      setTy(drag.current.ty + e.clientY - drag.current.y)
+  const onDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !e.isPrimary || (e.target as Element).closest('button')) return
+    skipClick.current = false
+    const shouldOrbit = spatial && !e.shiftKey
+    if (!shouldOrbit && (e.target as Element).closest('[data-node-id]')) return
+    drag.current = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      tx,
+      ty,
+      camera: shouldOrbit ? camera : null,
+      moved: false,
     }
   }
 
-  // Interactive node click (progressive disclosure & selection)
-  const handleStageClick = (e: React.MouseEvent) => {
-    const target = (e.target as HTMLElement).closest('[data-node-id]') as HTMLElement | null
-    if (!target) return
+  const onMove = (e: React.PointerEvent) => {
+    const start = drag.current
+    if (!start || start.pointerId !== e.pointerId) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (!start.moved) {
+      if (Math.hypot(dx, dy) < 5) return
+      e.currentTarget.setPointerCapture(e.pointerId)
+      start.moved = true
+      skipClick.current = true
+    }
 
-    const nodeId = target.getAttribute('data-node-id')
-    if (!nodeId) return
+    if (start.camera) {
+      setCamera(rotateCamera(start.camera, dx * 0.28, dy * 0.28))
+    } else {
+      setTx(start.tx + dx)
+      setTy(start.ty + dy)
+    }
+  }
 
-    const isExpandable = target.getAttribute('data-expandable') === 'true'
-    const isCurrentlyExpanded = target.getAttribute('data-expanded') === 'true'
+  const endDrag = (e: React.PointerEvent) => {
+    if (drag.current?.pointerId === e.pointerId) drag.current = null
+  }
+
+  const toggleNode = (nodeId: string, expanded: boolean) => {
+    setExpandedIds(ids => {
+      const next = new Set(ids)
+      if (expanded) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+    setCollapsedIds(ids => {
+      const next = new Set(ids)
+      if (expanded) next.add(nodeId)
+      else next.delete(nodeId)
+      return next
+    })
+  }
+
+  const activateNode = (element: EventTarget) => {
+    const target = (element as Element).closest('[data-node-id]')
+    const nodeId = target?.getAttribute('data-node-id')
+    if (!target || !nodeId) return
+
+    const node = layout?.allNodes.get(nodeId)
 
     setSelectedNodeId(nodeId)
     setShowInspector(true)
 
-    if (isExpandable) {
-      if (isCurrentlyExpanded) {
-        // Collapse
-        setExpandedIds(prev => {
-          const next = new Set(prev)
-          next.delete(nodeId)
-          return next
-        })
-        setCollapsedIds(prev => new Set(prev).add(nodeId))
-      } else {
-        // Expand
-        setCollapsedIds(prev => {
-          const next = new Set(prev)
-          next.delete(nodeId)
-          return next
-        })
-        setExpandedIds(prev => new Set(prev).add(nodeId))
-      }
-    }
+    if (node?.is_expandable) toggleNode(nodeId, node.isExpanded)
   }
 
   // Preset switch handler
@@ -345,9 +421,15 @@ export default function DiagramView({ model }: { model: string }) {
     const el = stage.current
     if (el) {
       const targetScale = Math.max(scale, 1.15)
+      const volume = spatial ? Array.from(el.querySelectorAll<SVGGElement>('.tensor-volume'))
+        .find(volume => volume.dataset.nodeId === node.id) : undefined
+      const bounds = volume?.getBoundingClientRect()
+      const stageBounds = el.getBoundingClientRect()
+      const x = bounds ? (bounds.left - stageBounds.left + bounds.width / 2 - tx) / scale : node.cx
+      const y = bounds ? (bounds.top - stageBounds.top + bounds.height / 2 - ty) / scale : node.topY + node.height / 2
       setScale(targetScale)
-      setTx(el.clientWidth / 2 - node.cx * targetScale)
-      setTy(el.clientHeight / 2 - (node.topY + node.height / 2) * targetScale)
+      setTx(el.clientWidth / 2 - x * targetScale)
+      setTy(el.clientHeight / 2 - y * targetScale)
     }
   }
 
@@ -357,6 +439,8 @@ export default function DiagramView({ model }: { model: string }) {
       const params = new URLSearchParams(window.location.search)
       params.set('model', model)
       params.set('preset', String(preset))
+      if (spatial) params.set('view', '3d')
+      else params.delete('view')
       params.set('layer', String(selectedLayer))
       if (selectedNodeId) params.set('node', selectedNodeId)
       else params.delete('node')
@@ -364,6 +448,8 @@ export default function DiagramView({ model }: { model: string }) {
       else params.delete('focus')
       if (expandedIds.size > 0) params.set('expanded', Array.from(expandedIds).join(','))
       else params.delete('expanded')
+      if (collapsedIds.size > 0) params.set('collapsed', Array.from(collapsedIds).join(','))
+      else params.delete('collapsed')
 
       const newUrl = window.location.pathname + '?' + params.toString()
       window.history.replaceState(null, '', newUrl)
@@ -397,6 +483,14 @@ export default function DiagramView({ model }: { model: string }) {
     )
   }
 
+  if (showInference) {
+    return (
+      <Suspense fallback={<main className="loading" role="status">Loading inference model…</main>}>
+        <InferenceWalkthrough onClose={() => setShowInference(false)} />
+      </Suspense>
+    )
+  }
+
   const rows = [
     ['Model ID', model],
     ['Architecture', spec.architecture],
@@ -421,8 +515,14 @@ export default function DiagramView({ model }: { model: string }) {
       <div className="diagram-workspace-toolbar" role="toolbar" aria-label="Diagram Controls">
         {/* Left: Detail Slider (1 - 2 - 3) */}
         <div className="toolbar-left-group">
+          <div className="slider-pills diagram-view-switch" role="group" aria-label="Diagram view">
+            <button type="button" aria-pressed={!spatial} onClick={() => setSpatial(false)}>2D</button>
+            <button type="button" aria-pressed={spatial} onClick={() => setSpatial(true)}>3D</button>
+          </div>
+          <button type="button" className="toolbar-btn" onClick={() => setShowInference(true)}>
+            Live inference
+          </button>
           <div className="detail-slider-control">
-            <span className="control-label">Detail Level:</span>
             <div className="slider-pills" role="radiogroup" aria-label="Detail Preset">
               <button
                 type="button"
@@ -432,7 +532,7 @@ export default function DiagramView({ model }: { model: string }) {
                 onClick={() => handleSelectPreset(1)}
                 title="Preset 1: Publication Overview"
               >
-                1 · Overview
+                Overview
               </button>
               <button
                 type="button"
@@ -442,7 +542,7 @@ export default function DiagramView({ model }: { model: string }) {
                 onClick={() => handleSelectPreset(2)}
                 title="Preset 2: Primary Module Projections"
               >
-                2 · Modules
+                Modules
               </button>
               <button
                 type="button"
@@ -452,7 +552,7 @@ export default function DiagramView({ model }: { model: string }) {
                 onClick={() => handleSelectPreset(3)}
                 title="Preset 3: Deep Operations & Shapes"
               >
-                3 · Deep
+                Deep
               </button>
             </div>
             {isCustomExpanded && <span className="custom-indicator-tag">Custom</span>}
@@ -545,7 +645,7 @@ export default function DiagramView({ model }: { model: string }) {
           <button
             type="button"
             className="toolbar-btn"
-            onClick={() => setScale(s => Math.min(6, s * 1.2))}
+            onClick={() => zoomFromCenter(1.2)}
             title="Zoom In"
           >
             +
@@ -553,7 +653,7 @@ export default function DiagramView({ model }: { model: string }) {
           <button
             type="button"
             className="toolbar-btn"
-            onClick={() => setScale(s => Math.max(0.08, s / 1.2))}
+            onClick={() => zoomFromCenter(1 / 1.2)}
             title="Zoom Out"
           >
             -
@@ -567,7 +667,7 @@ export default function DiagramView({ model }: { model: string }) {
               onClick={() => setShowExportMenu(!showExportMenu)}
               aria-expanded={showExportMenu}
             >
-              Export Diagram ▾
+              {spatial ? 'Export 2D' : 'Export Diagram'} ▾
             </button>
 
             {showExportMenu && (
@@ -707,14 +807,33 @@ export default function DiagramView({ model }: { model: string }) {
       {/* Main Stage & Canvas */}
       <div className="diagram-canvas-row">
         <div
-          className="stage interactive-stage"
+          className={`stage interactive-stage${spatial ? ' is-spatial' : ''}`}
+          role={spatial ? 'region' : undefined}
+          aria-label={spatial ? '3D architecture canvas' : undefined}
+          aria-describedby={spatial ? 'diagram-orbit-instructions' : undefined}
+          tabIndex={spatial ? 0 : undefined}
           ref={stage}
-          onMouseDown={onDown}
-          onMouseMove={onMove}
-          onMouseUp={() => (drag.current = null)}
-          onMouseLeave={() => (drag.current = null)}
-          onClick={handleStageClick}
-          style={{ cursor: 'grab' }}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onLostPointerCapture={endDrag}
+          onClick={e => {
+            if (!skipClick.current || e.detail === 0) activateNode(e.target)
+            skipClick.current = false
+          }}
+          onKeyDown={e => {
+            const rotation = spatial && e.target === e.currentTarget ? ROTATION_KEYS.get(e.key) : undefined
+            if (rotation) {
+              e.preventDefault()
+              setCamera(previous => rotateCamera(previous, rotation[0], rotation[1]))
+            }
+            if ((e.key === 'Enter' || e.key === ' ') && (e.target as Element).hasAttribute('data-node-id')) {
+              e.preventDefault()
+              keyboardNode.current = (e.target as SVGElement).dataset.nodeId ?? null
+              activateNode(e.target)
+            }
+          }}
         >
           <div
             className="svg-viewport-wrapper"
@@ -724,6 +843,25 @@ export default function DiagramView({ model }: { model: string }) {
             }}
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
+          {spatial && (
+            <div className="tensor-scene-caption">
+              <strong>{spec.name}</strong>
+              <span>{focusedNodeId ? 'Component detail' : `${fmtNum(spec.num_layers)} decoder layers`}</span>
+              <ul className="tensor-scene-key" aria-label="Tensor colors">
+                <li><i className="tensor-key-weights" />Weights</li>
+                <li><i className="tensor-key-activations" />Activations</li>
+                <li><i className="tensor-key-operations" />Operations</li>
+              </ul>
+            </div>
+          )}
+          {spatial && (
+            <div className="diagram-orbit-controls">
+              <span id="diagram-orbit-instructions" title="Shift-drag to pan">Drag or use arrow keys to rotate</span>
+              <button type="button" className="toolbar-btn" onClick={() => setCamera(DEFAULT_CAMERA)}>
+                Reset angle
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Collapsible Inspector Panel */}
@@ -741,34 +879,38 @@ export default function DiagramView({ model }: { model: string }) {
               </button>
             </div>
 
+            {spatial && walkthrough.length > 0 && (
+              <nav className="tensor-walkthrough" aria-label="Architecture walkthrough">
+                <div>
+                  <strong>Architecture walkthrough</strong>
+                  <span aria-live="polite" className="tensor-step-count">
+                    {walkthroughIndex < 0 ? `${walkthrough.length} components` : `${walkthroughIndex + 1} of ${walkthrough.length}`}
+                  </span>
+                </div>
+                <div className="tensor-walkthrough-actions">
+                  {walkthroughIndex >= 0 && (
+                    <button type="button" className="toolbar-btn" disabled={walkthroughIndex === 0} onClick={() => moveWalkthrough(-1)}>
+                      Previous
+                    </button>
+                  )}
+                  <button type="button" className="toolbar-btn" disabled={walkthroughIndex >= walkthrough.length - 1} onClick={() => moveWalkthrough(1)}>
+                    {walkthroughIndex < 0 ? 'Start walkthrough' : 'Next'}
+                  </button>
+                </div>
+              </nav>
+            )}
+
             {selectedNode ? (
               <div className="inspector-selected-content">
                 <div className="inspector-kind-row">
                   <span className="inspector-badge">{selectedNode.badge || selectedNode.kind.toUpperCase()}</span>
-                  {selectedNode.is_expandable && (
+                  {selectedNode.is_expandable && !focusedNodeId && (
                     <button
                       type="button"
                       className="btn-inline-toggle"
-                      onClick={() => {
-                        const id = selectedNode.id
-                        if (expandedIds.has(id)) {
-                          setExpandedIds(prev => {
-                            const n = new Set(prev)
-                            n.delete(id)
-                            return n
-                          })
-                          setCollapsedIds(prev => new Set(prev).add(id))
-                        } else {
-                          setCollapsedIds(prev => {
-                            const n = new Set(prev)
-                            n.delete(id)
-                            return n
-                          })
-                          setExpandedIds(prev => new Set(prev).add(id))
-                        }
-                      }}
+                      onClick={() => toggleNode(selectedNode.id, selectedNode.isExpanded)}
                     >
-                      {expandedIds.has(selectedNode.id) ? 'Collapse ▲' : 'Expand ▼'}
+                      {selectedNode.isExpanded ? 'Collapse ▲' : 'Expand ▼'}
                     </button>
                   )}
                 </div>
@@ -807,7 +949,7 @@ export default function DiagramView({ model }: { model: string }) {
                 </table>
 
                 {/* Focus Button */}
-                {selectedNode.is_expandable && (
+                {['attention', 'ffn', 'moe'].includes(selectedNode.kind) && focusedNodeId !== selectedNode.id && (
                   <button
                     type="button"
                     className="btn-focus-section"

@@ -109,10 +109,10 @@ export class SVG {
     this.parts = out
   }
 
-  document(width: number, height: number, css: string, svgId = ''): string {
+  document(width: number, height: number, css: string, svgId = '', interactive = false): string {
     const body = this.parts.join('\n')
     const idattr = svgId ? ` id="${svgId}"` : ''
-    return `<svg xmlns="http://www.w3.org/2000/svg"${idattr} width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img">\n<style>${css}</style>\n<rect width="${width}" height="${height}" class="surface"/>\n${body}\n</svg>`
+    return `<svg xmlns="http://www.w3.org/2000/svg"${idattr} width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="${interactive ? 'group' : 'img'}">\n<style>${css}</style>\n<rect width="${width}" height="${height}" class="surface"/>\n${body}\n</svg>`
   }
 }
 

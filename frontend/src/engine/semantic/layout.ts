@@ -78,7 +78,8 @@ function layoutAttentionInternals(
       y: nY,
       width: nW,
       height: nH,
-      isExpanded: false,
+      is_expandable: node.is_expandable && preset < 3 && spec.attention.kind !== 'MLA',
+      isExpanded: expandedIds.has(node.id),
       cx: nCx,
       topY: nY,
       bottomY: nY + nH,
@@ -211,7 +212,7 @@ function layoutAttentionInternals(
   if (qLn && ropeLn) edges.push({ fromId: qLn.id, toId: ropeLn.id, fromX: qLn.cx, fromY: qLn.topY, toX: ropeLn.cx - 80, toY: ropeLn.bottomY, label: 'Q [B, H, S, d]' })
   if (kLn && ropeLn) edges.push({ fromId: kLn.id, toId: ropeLn.id, fromX: kLn.cx, fromY: kLn.topY, toX: ropeLn.cx + 80, toY: ropeLn.bottomY, label: 'K [B, H_kv, S, d]' })
   if (ropeLn && scoresLn) edges.push({ fromId: ropeLn.id, toId: scoresLn.id, fromX: ropeLn.cx, fromY: ropeLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Rotary Q, K' })
-  if (scoresLn && softmaxLn) edges.push({ fromId: scoresLn.id, toId: softmaxLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: scoresLn.cx, toY: scoresLn.bottomY, label: 'Scores [H, S, S]' })
+  if (scoresLn && softmaxLn) edges.push({ fromId: scoresLn.id, toId: softmaxLn.id, fromX: scoresLn.cx, fromY: scoresLn.topY, toX: softmaxLn.cx, toY: softmaxLn.bottomY, label: 'Scores [H, S, S]' })
   if (softmaxLn && ctxLn) edges.push({ fromId: softmaxLn.id, toId: ctxLn.id, fromX: softmaxLn.cx, fromY: softmaxLn.topY, toX: ctxLn.cx - 100, toY: ctxLn.bottomY, label: 'Weights [H, S, S]' })
   if (vLn && ctxLn) edges.push({ fromId: vLn.id, toId: ctxLn.id, fromX: vLn.cx, fromY: vLn.topY, toX: ctxLn.cx + 120, toY: ctxLn.bottomY, label: 'Values [B, H_kv, S, d]' })
   if (ctxLn && oLn) edges.push({ fromId: ctxLn.id, toId: oLn.id, fromX: ctxLn.cx, fromY: ctxLn.topY, toX: oLn.cx, toY: oLn.bottomY, label: 'Context [B, S, D]' })
@@ -245,7 +246,8 @@ function layoutFfnInternals(
       y: nY,
       width: nW,
       height: nH,
-      isExpanded: false,
+      is_expandable: node.is_expandable && preset < 3 && !spec.moe,
+      isExpanded: expandedIds.has(node.id),
       cx: nCx,
       topY: nY,
       bottomY: nY + nH,
@@ -498,6 +500,7 @@ export function computeDiagramLayout(
     y: 261,
     width: headW,
     height: headH,
+    is_expandable: false,
     isExpanded: false,
     cx,
     topY: 261,
@@ -779,6 +782,7 @@ export function computeDiagramLayout(
     y: embTop,
     width: embW,
     height: embH,
+    is_expandable: false,
     isExpanded: false,
     cx,
     topY: embTop,

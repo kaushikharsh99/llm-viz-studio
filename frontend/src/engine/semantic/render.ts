@@ -1,5 +1,8 @@
+import { renderTensorScene } from './tensorScene'
+import type { DiagramCamera } from './orbit'
 import { SVG, escapeHtml, fmtCount } from '../render/svg'
 import { accentFor, scopeId, stylesheet, blockTint } from '../render/tokens'
+import { textWidth } from '../render/widths'
 import type { ArchSpec } from '../spec'
 import type { DiagramLayout, LayoutedNode, WorkspaceState } from './types'
 
@@ -36,6 +39,8 @@ function displayName(name: string): string {
 
 export interface RenderOptions {
   interactive?: boolean
+  camera?: DiagramCamera
+  viewportScale?: number
   selectedNodeId?: string | null
   focusedNodeId?: string | null
 }
@@ -50,18 +55,23 @@ export function renderSemanticDiagram(
   options: RenderOptions = {}
 ): string {
   const accent = accentFor(spec.model_type)
-  const g = new SVG()
   const cx = 470
   const isInteractive = options.interactive ?? true
   const selectedId = options.selectedNodeId || state.selectedNodeId
+  if (options.camera) return renderTensorScene(layout, options.camera, selectedId, options.viewportScale ?? 1)
+  const g = new SVG()
 
   // Focus Mode Title or Model Title
   if (state.focusedNodeId) {
     const focusNode = layout.rootNodes[0]
-    g.text(450, 60, focusNode ? focusNode.label : displayName(spec.name), 38, 'accent', 'middle', 800)
+    const title = focusNode?.label ?? displayName(spec.name)
+    const titleSize = Math.min(38, (layout.width - 80) / textWidth(title, 1, true))
+    g.text(450, 60, title, titleSize, 'accent', 'middle', 800)
     g.text(450, 92, `Isolated Component View · ${spec.name}`, 16, '', 'middle', 500)
   } else {
-    g.text(cx, 74, displayName(spec.name), 46, 'accent', 'middle', 800)
+    const title = displayName(spec.name.slice(spec.name.lastIndexOf('/') + 1) || spec.name)
+    const titleSize = Math.min(46, (2 * cx - 80) / textWidth(title, 1, true))
+    g.text(cx, 74, title, titleSize, 'accent', 'middle', 800)
   }
 
   // Draw Outer Container (if present)
@@ -75,17 +85,14 @@ export function renderSemanticDiagram(
     const rbc = layout.repeatedBlockContainer
     g.rect(rbc.x, rbc.y, rbc.w, rbc.h, 34, 'blockc')
 
-    // Layer brace on the left
-    g.text(rbc.x - 26, rbc.y + rbc.h + 22, '{', 140, '', 'middle', 300)
-    g.richText(rbc.x - 158, rbc.y + rbc.h - 12, [[`${rbc.numLayers} ×`, 'accent']], 34)
+    g.text(rbc.x + 18, rbc.y + 30, `${rbc.numLayers} × Decoder blocks`, 16, 'accent', 'start', 700)
   }
 
   // Helper for rendering interactive attributes
   function nodeAttrs(n: LayoutedNode): string {
     if (!isInteractive) return ''
     const isSelected = selectedId === n.id
-    const cursor = n.is_expandable ? 'cursor: pointer;' : 'cursor: default;'
-    return `data-node-id="${escapeHtml(n.id)}" data-expandable="${n.is_expandable}" data-expanded="${n.isExpanded}" class="interactive-node ${isSelected ? 'node-selected' : ''}" style="${cursor}"`
+    return `data-node-id="${escapeHtml(n.id)}" data-expandable="${n.is_expandable}" data-expanded="${n.isExpanded}" role="button" tabindex="0" aria-label="${escapeHtml(n.label)}" aria-pressed="${isSelected}" ${n.is_expandable ? `aria-expanded="${n.isExpanded}"` : ''} class="interactive-node node-kind-${n.kind} ${isSelected ? 'node-selected' : ''}"`
   }
 
   // Render Residual Rails
@@ -96,7 +103,10 @@ export function renderSemanticDiagram(
 
   // Render Nodes
   for (const n of layout.rootNodes) {
-    renderNode(g, n, spec, state, nodeAttrs, isInteractive, selectedId)
+    const isFocusGroup = Boolean(state.focusedNodeId && n.children?.length)
+    g.raw(isFocusGroup ? '<g>' : `<g ${nodeAttrs(n)}>`)
+    renderNode(g, n, spec, state, nodeAttrs, isInteractive)
+    g.raw('</g>')
   }
 
   // Render Side Magnified Insets (Breakout detail with projection rays)
@@ -118,25 +128,29 @@ export function renderSemanticDiagram(
 
       // 5. Child projection pills inside side inset
       for (const ch of inset.children) {
-        renderChildPill(g, ch, spec, nodeAttrs)
+        renderChildPill(g, ch, nodeAttrs)
       }
 
-      // 6. Directed Dataflow Edges inside side inset
-      for (const edge of inset.edges) {
-        const isSelected = selectedId === edge.fromId || selectedId === edge.toId
-        if (Math.abs(edge.fromX - edge.toX) < 8) {
-          g.arrow(edge.fromX, edge.fromY, edge.toX, edge.toY)
-        } else {
-          const midY = (edge.fromY + edge.toY) / 2
-          g.path(`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${midY}, ${edge.toX} ${midY}, ${edge.toX} ${edge.toY + 6}`)
-          g.arrow(edge.toX, edge.toY + 6, edge.toX, edge.toY)
-        }
+      drawDetailEdges(inset.edges)
+    }
+  }
 
-        if (edge.label) {
-          const midX = (edge.fromX + edge.toX) / 2 + (edge.fromX !== edge.toX ? 8 : 12)
-          const midY = (edge.fromY + edge.toY) / 2
-          g.text(midX, midY, edge.label, 11, 'mono', 'start', 600)
-        }
+  if (state.focusedNodeId) drawDetailEdges(layout.internalEdges ?? [])
+
+  function drawDetailEdges(edges: NonNullable<DiagramLayout['internalEdges']>) {
+    for (const edge of edges) {
+      if (Math.abs(edge.fromX - edge.toX) < 8) {
+        g.arrow(edge.fromX, edge.fromY, edge.toX, edge.toY, 'flow', 8)
+      } else {
+        const midY = (edge.fromY + edge.toY) / 2
+        g.path(`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${midY}, ${edge.toX} ${midY}, ${edge.toX} ${edge.toY + 8}`)
+        g.arrow(edge.toX, edge.toY + 8, edge.toX, edge.toY, 'flow', 8)
+      }
+
+      if (edge.label) {
+        const midX = (edge.fromX + edge.toX) / 2 + (edge.fromX !== edge.toX ? 8 : 12)
+        const midY = (edge.fromY + edge.toY) / 2
+        g.text(midX, midY, edge.label, 11, 'mono', 'start', 600)
       }
     }
   }
@@ -156,7 +170,8 @@ export function renderSemanticDiagram(
 
   // Top spine arrows
   if (head) {
-    g.arrow(head.cx, head.y, head.cx, 128)
+    g.arrow(head.cx, head.y, head.cx, 150)
+    g.text(head.cx, 132, 'Output logits', 22, 'mono', 'middle')
   }
   if (finNorm && head) {
     g.arrow(cx, finNorm.topY, cx, head.bottomY + 3)
@@ -210,9 +225,9 @@ export function renderSemanticDiagram(
     g.leader(c.x - 10, c.y + 10, c.targetX, c.targetY)
   }
 
-  const css = stylesheet(accent)
   const id = scopeId(accent)
-  return g.document(layout.width, layout.height, css, id)
+  const css = stylesheet(accent) + (isInteractive ? workspaceStyles(id) : '')
+  return g.document(layout.width, layout.height, css, id, isInteractive)
 }
 
 /**
@@ -224,11 +239,8 @@ function renderNode(
   spec: ArchSpec,
   state: WorkspaceState,
   nodeAttrs: (n: LayoutedNode) => string,
-  isInteractive: boolean,
-  selectedId: string | null
+  isInteractive: boolean
 ): void {
-  const isSelected = selectedId === n.id
-
   // 1. Attention Block
   if (n.kind === 'attention') {
     if (state.focusedNodeId && n.children && n.children.length > 0) {
@@ -236,7 +248,7 @@ function renderNode(
       g.rect(n.x, n.y, n.width, n.height, 20, 'inset-accent')
       g.text(n.cx, n.y + 26, `▲ Self-Attention Mechanism (Expanded)`, 16, 'accent', 'middle', 700)
       for (const ch of n.children) {
-        renderChildPill(g, ch, spec, nodeAttrs)
+        renderChildPill(g, ch, nodeAttrs)
       }
       return
     }
@@ -268,14 +280,14 @@ function renderNode(
       g.text(
         n.cx,
         n.y + 26,
-        `▲ ${n.kind === 'moe' ? 'Mixture-of-Experts' : 'SwiGLU Feed-Forward'} (Expanded)`,
+        `▲ ${n.kind === 'moe' ? 'Mixture-of-Experts' : 'Feed-Forward Network'} (Expanded)`,
         16,
         'accent',
         'middle',
         700
       )
       for (const ch of n.children) {
-        renderChildPill(g, ch, spec, nodeAttrs)
+        renderChildPill(g, ch, nodeAttrs)
       }
       return
     }
@@ -291,7 +303,7 @@ function renderNode(
         g.text(n.rightX - 128, n.y + 28, '−', 18, 'black', 'middle', 700)
       }
     } else if (n.is_expandable && isInteractive) {
-      g.text(n.rightX - 16, n.y + 20, '+', 16, 'white', 'middle', 700)
+      g.text(n.rightX - 16, n.y + 20, '+', 16, 'accent', 'middle', 700)
     }
     return
   }
@@ -302,11 +314,19 @@ function renderNode(
     return
   }
 
+  if (state.focusedNodeId && n.children?.length) {
+    g.rect(n.x, n.y, n.width, n.height, 20, 'inset-accent')
+    for (const child of n.children) {
+      renderChildPill(g, child, nodeAttrs)
+    }
+    return
+  }
+
   // 4. Standard Pills (Norm, Output, Embeddings)
   g.rect(n.x, n.y, n.width, n.height, 14, 'pill')
   g.text(n.cx, n.y + n.height / 2 + 8, n.label, 22, '', 'middle')
   if (n.is_expandable && isInteractive) {
-    g.text(n.rightX - 16, n.y + 18, '+', 14, 'white', 'middle', 700)
+    g.text(n.rightX - 16, n.y + 18, '+', 14, 'accent', 'middle', 700)
   }
 }
 
@@ -316,7 +336,6 @@ function renderNode(
 function renderChildPill(
   g: SVG,
   ch: LayoutedNode,
-  spec: ArchSpec,
   nodeAttrs: (n: LayoutedNode) => string
 ): void {
   g.raw(`<g ${nodeAttrs(ch)} id="${escapeHtml(ch.id)}">`)
@@ -324,14 +343,15 @@ function renderChildPill(
 
   g.rect(ch.x, ch.y, ch.width, ch.height, 10, pillClass)
 
-  const badgeW = ch.badge ? Math.max(48, ch.badge.length * 7 + 10) : 0
+  const badge = ch.badge
+  const badgeW = badge ? Math.max(48, badge.length * 7 + 10) : 0
   const badgeH = 18
   const badgeX = ch.rightX - badgeW - 8
   const badgeY = ch.y + (ch.height - badgeH) / 2
 
   // Text bounding coordinates to guarantee zero badge collision
   const textLeft = ch.leftX + 10
-  const textRight = ch.badge ? badgeX - 8 : ch.rightX - 10
+  const textRight = badge ? badgeX - 8 : ch.rightX - 10
   const textCenterX = (textLeft + textRight) / 2
 
   // Shorten "(q_proj)" suffix in narrow 3-column projection pill so "Query Projection" fits with 25px margin!
@@ -339,6 +359,7 @@ function renderChildPill(
     ? ch.label.replace(/\s*\([a-z0-9_]+\)$/i, '')
     : ch.label
   const hasSub = Boolean(ch.sublabel || ch.shape_str)
+  const maxLabelSize = (textRight - textLeft) / textWidth(displayLabel, 1, true)
 
   if (hasSub) {
     const labelFontSize = ch.width < 220 ? 11.5 : 13.5
@@ -346,36 +367,34 @@ function renderChildPill(
     const labelY = ch.y + 19
     const subY = ch.y + 36
 
-    let sub = ''
-    if (ch.shape_str && ch.sublabel && ch.width >= 260) {
-      sub = `${ch.shape_str} · ${ch.sublabel}`
-    } else if (ch.shape_str) {
-      sub = ch.shape_str
-    } else {
-      sub = ch.sublabel || ''
-    }
+    const summary = ch.shape_str || ch.sublabel || ''
+    const combined = ch.shape_str && ch.sublabel ? `${ch.shape_str} · ${ch.sublabel}` : summary
+    const maxChars = Math.floor((textRight - textLeft) / (subFontSize * 0.6))
+    const sub = combined.length <= maxChars ? combined : summary
+    const visibleSub = sub.length <= maxChars ? sub : `${sub.slice(0, maxChars - 1)}…`
+    g.raw(`<title>${escapeHtml(`${ch.label} — ${combined}`)}</title>`)
 
     if (ch.width < 220) {
-      g.text(textLeft, labelY, displayLabel, labelFontSize, '', 'start', 600)
-      g.text(textLeft, subY, sub, subFontSize, 'mono', 'start', 400)
+      g.text(textLeft, labelY, displayLabel, Math.min(labelFontSize, maxLabelSize), '', 'start', 600)
+      g.text(textLeft, subY, visibleSub, subFontSize, 'mono', 'start', 400)
     } else {
-      g.text(textCenterX, labelY, displayLabel, labelFontSize, '', 'middle', 600)
-      g.text(textCenterX, subY, sub, subFontSize, 'mono', 'middle', 400)
+      g.text(textCenterX, labelY, displayLabel, Math.min(labelFontSize, maxLabelSize), '', 'middle', 600)
+      g.text(textCenterX, subY, visibleSub, subFontSize, 'mono', 'middle', 400)
     }
   } else {
     const labelY = ch.y + ch.height / 2 + 5
     const labelFontSize = ch.width < 220 ? 12 : 14
     if (ch.width < 220) {
-      g.text(textLeft, labelY, displayLabel, labelFontSize, '', 'start', 600)
+      g.text(textLeft, labelY, displayLabel, Math.min(labelFontSize, maxLabelSize), '', 'start', 600)
     } else {
-      g.text(textCenterX, labelY, displayLabel, labelFontSize, '', 'middle', 600)
+      g.text(textCenterX, labelY, displayLabel, Math.min(labelFontSize, maxLabelSize), '', 'middle', 600)
     }
   }
 
   // Badge cleanly anchored to the right
-  if (ch.badge) {
+  if (badge) {
     g.rect(badgeX, badgeY, badgeW, badgeH, 4, 'pill')
-    g.text(badgeX + badgeW / 2, badgeY + 13, ch.badge, 9, 'accent', 'middle', 700)
+    g.text(badgeX + badgeW / 2, badgeY + 13, badge, 9, 'accent', 'middle', 700)
   }
 
   g.raw(`</g>`)
@@ -430,4 +449,25 @@ function drawMoeInset(g: SVG, s: ArchSpec, startX: number, startY: number): void
     g.rect(ix + iw / 2 - sW / 2, iy + ih - 60, sW, sH, 10, 'pill')
     g.text(ix + iw / 2, iy + ih - 34, `+ ${moe.shared_experts} Shared Expert (Always Active)`, 15, 'accent', 'middle', 600)
   }
+}
+
+function workspaceStyles(id: string): string {
+  return `
+    #${id} .surface { fill: transparent; }
+    #${id} .outer { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+    #${id} .blockc { fill: #eef2f7; stroke: #cbd5e1; stroke-width: 1.5; }
+    #${id} .pill, #${id} .plusc { stroke: #94a3b8; stroke-width: 1.5; }
+    #${id} .attnbox { fill: #164e63; stroke: #164e63; }
+    #${id} .moepill { fill: #e2e8f0; stroke: #94a3b8; stroke-width: 1.5; }
+    #${id} .router { fill: #164e63; stroke: #164e63; }
+    #${id} .inset, #${id} .inset-accent { fill: #fff; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: none; }
+    #${id} .flow { stroke: #475569; pointer-events: none; }
+    #${id} .flowhead { fill: #475569; pointer-events: none; }
+    #${id} .leader { stroke: #64748b; stroke-width: 1.5; pointer-events: none; }
+    #${id} .interactive-node { cursor: pointer; }
+    #${id} .interactive-node:focus-visible { outline: none; }
+    #${id} .interactive-node:is(:hover, :focus-visible, .node-selected) > :is(rect, circle) {
+      stroke: #0e7490; stroke-width: 4;
+    }
+  `
 }

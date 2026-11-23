@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createRoot } from 'react-dom/client'
-import { act } from 'react'
+import { act, StrictMode } from 'react'
 import App, { cleanModelId } from './App'
 
 describe('homepage and URL cleaner', () => {
@@ -81,7 +81,7 @@ describe('unified interactive diagram viewer test', () => {
     const root = createRoot(container)
 
     await act(async () => {
-      root.render(<App />)
+      root.render(<StrictMode><App /></StrictMode>)
     })
 
     // Allow promise resolution
@@ -111,6 +111,62 @@ describe('unified interactive diagram viewer test', () => {
     })
 
     expect(preset3.classList.contains('is-active')).toBe(true)
+
+    const attention = () => container.querySelector<SVGElement>('.interactive-node[data-node-id="layer_0_attention"]')!
+    const viewButton = (name: string) => Array.from(container.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Diagram view"] button'
+    )).find(button => button.textContent === name)!
+
+    expect(attention().querySelector('.tensor-face')).toBeNull()
+    await act(async () => viewButton('3D').click())
+    expect(viewButton('3D').getAttribute('aria-pressed')).toBe('true')
+    expect(attention().querySelector('.tensor-face')).not.toBeNull()
+    expect(attention().getAttribute('aria-expanded')).toBe('true')
+
+    const canvas = container.querySelector('[aria-label="3D architecture canvas"]')!
+    const facePoints = () => attention().querySelector('.tensor-face')?.getAttribute('points') ?? ''
+    const initialFace = facePoints()
+    expect(attention().querySelector('.tensor-cell')).not.toBeNull()
+    const turnRight = (steps: number) => act(async () => {
+      for (let step = 0; step < steps; step++) {
+        canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+      }
+    })
+    await turnRight(15)
+    expect(facePoints()).not.toBe(initialFace)
+    expect(container.querySelectorAll('.orbit-label-chip').length).toBeGreaterThan(0)
+    await turnRight(11)
+    const label = container.querySelector('.orbit-label-chip text')
+    expect(label?.closest('.tensor-labels')?.hasAttribute('transform')).toBe(false)
+    await turnRight(19)
+    const coordinates = (points: string) => points.split(/[ ,]/).map(Number)
+    coordinates(initialFace).forEach((value, index) => {
+      expect(coordinates(facePoints())[index]).toBeCloseTo(value)
+    })
+    await turnRight(1)
+    const button = (name: string) => Array.from(container.querySelectorAll('button'))
+      .find(element => element.textContent?.trim() === name)!
+    await act(async () => button('Reset angle').click())
+    expect(facePoints()).toBe(initialFace)
+    await act(async () => button('Start walkthrough').click())
+    expect(container.querySelector('.tensor-step-count')?.textContent).toMatch(/^1 of /)
+    expect(container.querySelector('.contextual-inspector-panel h3')?.textContent).toMatch(/Tokenized/)
+    await act(async () => button('Next').click())
+    expect(container.querySelector('.tensor-step-count')?.textContent).toMatch(/^2 of /)
+
+    await act(async () => attention().dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+    })))
+    expect(attention().getAttribute('aria-expanded')).toBe('false')
+    expect(attention().getAttribute('aria-pressed')).toBe('true')
+    expect(document.activeElement).toBe(attention())
+
+    await act(async () => viewButton('2D').click())
+    expect(attention().querySelector('.tensor-face')).toBeNull()
+    expect(attention().getAttribute('aria-expanded')).toBe('false')
+    expect(attention().getAttribute('aria-pressed')).toBe('true')
+
 
     await act(async () => {
       root.unmount()
